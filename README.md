@@ -15,6 +15,7 @@ No server, no accounts, no tracking. Everything is in `index.html` (HTML, CSS an
 | `tests/align.test.js` | Unit tests for the word-alignment logic: `node tests/align.test.js` |
 | `tests/whisper.test.js` | Unit tests for the OpenAI Whisper engine (request building, response parsing, word-timing WPM, error handling), using mocked API responses: `node tests/whisper.test.js` |
 | `tests/e2e.screens.js` | Headless-browser smoke test and screenshots (needs Playwright and Chrome). |
+| `tests/e2e.session.js` | Regression test for scrolling and Stop during a reading session (iPhone-sized touch emulation, mocked recogniser that never fires `onend`, mocked recorder that never fires `onstop`). |
 | `tests/e2e.whisper.js` | Headless test of the Whisper flow with a mocked microphone/MediaRecorder and mocked OpenAI API. |
 
 The `tests/` folder is not needed on the website. Upload it or not, as you prefer.
@@ -50,7 +51,7 @@ Second paragraph (blank line between paragraphs; single line breaks are kept, go
 ```
 Use back-ticks around `body` so quotes and apostrophes need no escaping. Avoid using a back-tick inside
 the text. Write numbers as words where you can (digits work too: "40" matches "forty").
-If you host with the service worker, change `VERSION` in `sw.js` (currently `read-aloud-v2`) after editing so devices pick up the update.
+If you host with the service worker, change `VERSION` in `sw.js` (currently `read-aloud-v3`) after editing so devices pick up the update.
 
 ## How the checking works
 * Text and transcript are normalised: case, punctuation, curly quotes and accents are ignored, and
@@ -64,6 +65,14 @@ If you host with the service worker, change `VERSION` in `sw.js` (currently `rea
 * Accuracy = correct ÷ words attempted. WPM = words attempted ÷ minutes (Start to Stop for the built-in engine; first to last spoken word for Whisper).
 * In the CSV export, `seconds` is the time used for WPM, `recordedSeconds` is Start to Stop, and `engine`/`timing` say which was used.
 * Tapping a flagged word marks it as a "recogniser error", and the scores are recalculated and saved.
+
+## While reading (recording)
+When Start is tapped, the screen switches to a reading layout. The text sits in its own scrolling box
+between a slim title bar and a fixed Stop bar, which stays clear of the iPhone home bar and notch. Stop takes
+effect on the tap itself. The screen leaves recording mode at once, and the engine is shut down within
+about a second even if the browser's speech service doesn't respond. If the built-in recogniser keeps stopping
+straight away (a known iOS issue), the app ends the session with a message instead of retrying forever.
+After an update, close the Home Screen app fully (swipe it away) and reopen it, maybe twice, to get the new version.
 
 ## Transcription engines
 Choose in **Settings › Transcription engine**:

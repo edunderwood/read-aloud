@@ -72,7 +72,7 @@ h2{font-size:20px;margin:24px 0 10px}
 .w{border-radius:6px;padding:0 1px;transition:background .15s}
 .w.speaking{background:var(--accent-soft);box-shadow:0 0 0 2px var(--accent-soft)}
 .source{font-size:14px;color:var(--muted);margin-top:4px}
-.dock{position:fixed;left:0;right:0;bottom:0;z-index:30;background:color-mix(in srgb,var(--bg) 92%,transparent);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-top:1px solid var(--line);padding:12px 16px calc(12px + env(safe-area-inset-bottom))}
+.dock{position:fixed;left:0;right:0;bottom:0;z-index:30;background:var(--bg);border-top:1px solid var(--line);padding-left:max(16px,env(safe-area-inset-left));padding-right:max(16px,env(safe-area-inset-right));padding:12px 16px calc(12px + env(safe-area-inset-bottom))}
 .dock .inner{max-width:920px;margin:0 auto;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
 .timer{font-variant-numeric:tabular-nums;font-size:22px;font-weight:700;min-width:70px}
 .live{flex:1 1 220px;min-width:0;font-size:15px;color:var(--muted);max-height:3em;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
@@ -133,6 +133,17 @@ select{min-height:44px;border-radius:12px;border:1px solid var(--line);backgroun
   .btn.big{min-height:58px;font-size:18px;padding:0 18px}
 }
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* ---- Reading session (recording): text scrolls in its own box, Stop bar always visible ---- */
+.btn,.chip,.word,.seg button,.switch{touch-action:manipulation}
+#rec{min-height:64px;min-width:150px;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+.session-bar{display:none}
+body.in-session{overflow:hidden;overscroll-behavior:none}
+body.in-session header.top{visibility:hidden}
+body.in-session main > *:not(#reading):not(.dock):not(.session-bar){visibility:hidden}
+body.in-session .session-bar{display:flex;align-items:center;gap:8px;position:fixed;z-index:26;top:0;left:0;right:0;height:calc(env(safe-area-inset-top) + 44px);padding:env(safe-area-inset-top) max(16px,env(safe-area-inset-right)) 0 max(16px,env(safe-area-inset-left));background:var(--bg);border-bottom:1px solid var(--line);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+body.in-session #reading{position:fixed;z-index:20;top:calc(env(safe-area-inset-top) + 52px);bottom:calc(var(--dock-h,120px) + 8px);left:0;right:0;margin:0 auto;width:min(40em,calc(100% - 24px));max-width:none;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;touch-action:pan-y}
+body.in-session .dock{z-index:40}
 
 </style>
 </head>
@@ -1071,7 +1082,9 @@ if (typeof module !== "undefined") module.exports = Whisper;
 
   /* ---------- speech recognition controller ---------- */
   function makeRecognizer(onUpdate, onFatal) {
-    let active = false, rec = null, committed = "", session = "", restarts = 0, fatal = false, endResolve = null;
+    // State: "idle" -> "active" -> "stopping" -> "stopped". Once stopping, nothing may restart it.
+    let state = "idle", rec = null, committed = "", session = "", fatal = false;
+    let restartTimer = null, sessionStart = 0, quickEnds = 0, restarts = 0;
     function collapse(results) {
       // iOS Safari sometimes repeats growing results; drop any result that the next one already contains at its start.
       const arr = [];
@@ -1080,33 +1093,65 @@ if (typeof module !== "undefined") module.exports = Whisper;
       arr.forEach((s, i) => { const n = arr[i + 1]; if (n && s && n.toLowerCase().startsWith(s.toLowerCase())) return; if (s) out.push(s); });
       return out.join(" ");
     }
+    function commit() { if (session) committed = (committed + " " + session).trim(); session = ""; }
+    function detach(r) { if (!r) return; r.onresult = r.onerror = r.onend = r.onstart = null; }
     function startSession() {
-      rec = new SR();
-      rec.lang = settings.lang; rec.continuous = true; rec.interimResults = true; rec.maxAlternatives = 1;
-      rec.onresult = e => { session = collapse(e.results); onUpdate(text()); };
-      rec.onerror = e => {
-        if (e.error === "not-allowed" || e.error === "service-not-allowed") { fatal = true; active = false; onFatal("permission"); }
-        else if (e.error === "audio-capture") { fatal = true; active = false; onFatal("nomic"); }
+      restartTimer = null;
+      if (state !== "active") return;
+      const r = new SR();
+      rec = r;
+      r.lang = settings.lang; r.continuous = true; r.interimResults = true; r.maxAlternatives = 1;
+      r.onresult = e => { if (rec !== r) return; session = collapse(e.results); onUpdate(text()); };
+      r.onerror = e => {
+        if (rec !== r || state !== "active") return;
+        if (e.error === "not-allowed" || e.error === "service-not-allowed") { fatal = true; onFatal("permission"); }
+        else if (e.error === "audio-capture") { fatal = true; onFatal("nomic"); }
         else if (e.error === "network") { onFatal("network"); }
-        else if (e.error === "language-not-supported") { fatal = true; active = false; onFatal("lang"); }
+        else if (e.error === "language-not-supported") { fatal = true; onFatal("lang"); }
         // "no-speech" and "aborted" are normal: we just restart in onend.
       };
-      rec.onend = () => {
-        if (session) committed = (committed + " " + session).trim(); session = "";
-        if (active && !fatal && restarts < 200) { restarts++; setTimeout(() => { if (active) { try { startSession(); } catch (err) { active = false; onFatal("restart"); } } }, 150); }
-        else if (endResolve) { endResolve(); endResolve = null; }
+      r.onend = () => {
+        if (rec !== r) return;
+        commit();
+        if (state !== "active" || fatal) return;
+        // iOS ends "continuous" sessions after short silences, so restart, but back off and give up
+        // if sessions keep dying instantly (that busy loop can make the page unresponsive on iOS).
+        quickEnds = (Date.now() - sessionStart < 1000) ? quickEnds + 1 : 0;
+        if (quickEnds >= 4 || restarts >= 300) { fatal = true; onFatal("restart"); return; }
+        restarts++;
+        restartTimer = setTimeout(startSession, Math.min(1500, 150 * Math.pow(2, quickEnds)));
       };
-      rec.start();
+      sessionStart = Date.now();
+      r.start();
     }
     function text() { return (committed + " " + session).trim(); }
+    function hardStop() {
+      clearTimeout(restartTimer); restartTimer = null;
+      const r = rec;
+      try { r && r.stop(); } catch (e) {}
+      return r;
+    }
     return {
-      start() { active = true; fatal = false; committed = ""; session = ""; restarts = 0; startSession(); },
+      // Must be called synchronously inside the tap handler (iOS needs a user gesture to start).
+      start() { state = "active"; fatal = false; committed = ""; session = ""; restarts = 0; quickEnds = 0; startSession(); },
+      // Always resolves within ~800 ms, whether or not the browser ever fires onend.
       stop() {
-        active = false;
-        return new Promise(res => { if (!rec) return res(); endResolve = res; try { rec.stop(); } catch (e) { res(); } setTimeout(() => { if (endResolve) { if (session) { committed = (committed + " " + session).trim(); session = ""; } endResolve(); endResolve = null; } }, 1500); });
+        if (state === "stopped") return Promise.resolve();
+        state = "stopping";
+        const r = hardStop();
+        return new Promise(res => {
+          let done = false;
+          const finish = () => { if (done) return; done = true; state = "stopped"; commit(); try { r && r.abort(); } catch (e) {} detach(r); if (rec === r) rec = null; res(); };
+          if (!r) return finish();
+          // Wait briefly for the last (final) result, then force it.
+          const prevEnd = r.onend;
+          r.onend = () => { try { prevEnd && prevEnd(); } catch (e) {} finish(); };
+          setTimeout(() => { try { r.abort(); } catch (e) {} }, 500);
+          setTimeout(finish, 800);
+        });
       },
-      abort() { active = false; try { rec && rec.abort(); } catch (e) {} },
-      text, get active() { return active; }
+      abort() { state = "stopped"; const r = hardStop(); try { r && r.abort(); } catch (e) {} detach(r); rec = null; },
+      text, get active() { return state === "active"; }
     };
   }
 
@@ -1122,6 +1167,7 @@ if (typeof module !== "undefined") module.exports = Whisper;
   // Record the microphone with MediaRecorder (whole reading, one file).
   function makeMediaRecorder() {
     let stream = null, mr = null, chunks = [], mime = "";
+    const release = () => { try { stream && stream.getTracks().forEach(tr => tr.stop()); } catch (e) {} };
     return {
       async start() {
         stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, channelCount: 1 } });
@@ -1131,14 +1177,19 @@ if (typeof module !== "undefined") module.exports = Whisper;
         mr.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
         mr.start(1000); // gather data every second so nothing is lost if stop is abrupt
       },
+      // Resolves within ~1 s even if the browser never fires onstop; uses whatever chunks have arrived.
       stop() {
         return new Promise(res => {
-          const done = () => { try { stream && stream.getTracks().forEach(tr => tr.stop()); } catch (e) {} const type = mime || (mr && mr.mimeType) || (chunks[0] && chunks[0].type) || "audio/webm"; res({ blob: new Blob(chunks, { type }), mime: type }); };
-          if (!mr || mr.state === "inactive") return done();
-          mr.onstop = done; try { mr.stop(); } catch (e) { done(); }
+          let done = false;
+          const finish = () => { if (done) return; done = true; release(); const type = mime || (mr && mr.mimeType) || (chunks[0] && chunks[0].type) || "audio/webm"; res({ blob: new Blob(chunks, { type }), mime: type }); };
+          if (!mr || mr.state === "inactive") return finish();
+          mr.onstop = () => setTimeout(finish, 0); // let a final dataavailable land first
+          try { mr.requestData && mr.requestData(); } catch (e) {}
+          try { mr.stop(); } catch (e) { finish(); }
+          setTimeout(finish, 900);
         });
       },
-      abort() { try { mr && mr.state !== "inactive" && mr.stop(); } catch (e) {} try { stream && stream.getTracks().forEach(tr => tr.stop()); } catch (e) {} }
+      abort() { try { mr && mr.state !== "inactive" && mr.stop(); } catch (e) {} release(); }
     };
   }
 
@@ -1158,6 +1209,7 @@ if (typeof module !== "undefined") module.exports = Whisper;
     view().innerHTML = `
       <button class="btn" id="back">← Library</button>
       <h1>${esc(t.title)}</h1>
+      <div class="session-bar" aria-hidden="true"><span class="dot"></span> ${esc(t.title)}</div>
       <div class="source"><span class="badge">${esc(TYPE_LABELS[t.type] || t.type)}</span> <span class="level">${levelDots(t.level)}</span> · ${wordCount(t)} words · ${esc(t.source)}</div>
       ${extraNotes.join("")}
       <div id="retry" class="hidden"></div>
@@ -1195,7 +1247,7 @@ if (typeof module !== "undefined") module.exports = Whisper;
     if ($("#btn-listen")) $("#btn-listen").onclick = e => listen($("#reading"), e.currentTarget);
     if ($("#show-typed")) $("#show-typed").onclick = () => showTyped();
 
-    let t0 = 0, elapsed = 0, tick = null, rec = null, mrec = null, wakeLock = null, running = false, uploading = false;
+    let t0 = 0, elapsed = 0, tick = null, rec = null, mrec = null, wakeLock = null, running = false, stopping = false, uploading = false;
     const recBtn = $("#rec"), live = $("#live"), timer = $("#timer");
     const setTimer = () => { timer.textContent = fmtTime(running ? (Date.now() - t0) / 1000 : elapsed); };
     const showTyped = () => { $("#typed").classList.remove("hidden"); $("#typed-text").focus(); };
@@ -1241,61 +1293,111 @@ if (typeof module !== "undefined") module.exports = Whisper;
     }
     if (pending && pending.textId === t.id) showRetry();
 
+    // ---- Session layout: while recording, the text gets its own scroll box between a small title bar and
+    // the Stop bar, so it can always be scrolled and Stop is always on screen (iOS standalone safe).
+    const dock = $(".dock");
+    const setDockVar = () => document.documentElement.style.setProperty("--dock-h", dock.offsetHeight + "px");
+    let ro = null;
+    function enterSession() {
+      const reading = $("#reading");
+      const header = document.querySelector("header.top");
+      const offset = Math.max(0, (header ? header.getBoundingClientRect().bottom : 0) - reading.getBoundingClientRect().top);
+      document.body.classList.add("in-session");
+      setDockVar();
+      if (window.ResizeObserver) { ro = new ResizeObserver(setDockVar); ro.observe(dock); }
+      reading.scrollTop = offset; // keep his place
+    }
+    function exitSession() {
+      const reading = $("#reading");
+      const keep = reading ? reading.scrollTop : 0;
+      document.body.classList.remove("in-session");
+      if (ro) { ro.disconnect(); ro = null; }
+      if (reading) window.scrollTo(0, Math.max(0, reading.offsetTop - 70 + keep));
+    }
+    // Live transcript: one text node updated at most once per frame (never re-renders the dock or button).
+    const liveDot = document.createElement("span"); liveDot.className = "dot";
+    const liveText = document.createTextNode("");
+    let paintPending = null;
+    const setLive = txt => { if (paintPending === null) requestAnimationFrame(() => { liveText.nodeValue = paintPending; paintPending = null; }); paintPending = txt; };
+    const liveSession = msg => { live.textContent = ""; live.append(liveDot, " ", liveText); liveText.nodeValue = msg; };
+    const releaseWake = () => { const w = wakeLock; wakeLock = null; try { w && w.release && w.release().catch(() => {}); } catch (e) {} };
+
     async function begin() {
       if (pending && pending.textId === t.id && !confirm("You have a recording that hasn't been checked yet. Start a new one and discard it?")) return;
       stopSpeaking();
       if (useWhisper) {
         mrec = makeMediaRecorder();
+        recBtn.disabled = true;
         try { await mrec.start(); }
         catch (e) {
-          mrec = null;
+          mrec = null; recBtn.disabled = false;
           const msg = e && e.name === "NotAllowedError" ? "Microphone permission was blocked. Allow the microphone for this site (iPhone/iPad: Settings › Safari › Microphone), then try again." : e && e.name === "NotFoundError" ? "No microphone was found." : "Couldn't start recording: " + (e && e.message || e);
           toast(msg); live.textContent = msg; return;
         }
+        recBtn.disabled = false;
         pending = null; $("#retry").className = "hidden";
-      }
-      running = true; t0 = Date.now(); elapsed = 0; tick = setInterval(setTimer, 250); setTimer();
-      recBtn.classList.add("recording"); recBtn.innerHTML = "■ Stop &amp; check";
-      try { if (navigator.wakeLock) wakeLock = await navigator.wakeLock.request("screen"); } catch (e) {}
-      if (useWhisper) {
-        live.innerHTML = `<span class="dot"></span> Recording… read the text aloud. (Your reading is checked after you tap Stop.)`;
       } else if (srOK) {
-        live.innerHTML = `<span class="dot"></span> Listening… start reading.`;
-        rec = makeRecognizer(txt => { live.textContent = txt ? "…" + txt.slice(-160) : "Listening…"; }, reason => {
-          const msg = { permission: "Microphone permission was blocked. Allow the microphone for this site (on iPhone/iPad: Settings › Safari › Microphone, and Settings › Privacy › Speech Recognition), then try again. Or use the typed option.", nomic: "No microphone was found.", network: "Speech recognition needs an internet connection on this device. Check the connection.", lang: "This language isn't supported for recognition here. Try another in Settings.", restart: "Speech recognition stopped unexpectedly. Tap Stop and try again." }[reason];
-          if (reason === "permission" || reason === "nomic" || reason === "lang") { finish(false); $("#typed").classList.remove("hidden"); }
-          toast(msg); live.textContent = msg;
+        // Start recognition synchronously inside the tap (iOS requires the user gesture). Nothing is awaited before this.
+        rec = makeRecognizer(txt => setLive(txt ? "…" + txt.slice(-160) : "Listening…"), reason => {
+          const msg = { permission: "Microphone or speech recognition permission was blocked. Allow it for this site (iPhone/iPad: Settings › Safari › Microphone, and Settings › Privacy & Security › Speech Recognition), then try again. Or use the typed option.", nomic: "No microphone was found.", network: "Speech recognition needs an internet connection on this device. Check the connection.", lang: "This language isn't supported for recognition here. Try another in Settings.", restart: "Speech recognition kept stopping on this device, so the session was ended. Try again, use OpenAI Whisper in Settings, or type/paste instead." }[reason];
+          toast(msg);
+          if (reason !== "network") { finish(reason === "restart").then(() => { live.textContent = msg; if (reason !== "restart") showTyped(); }); }
+          else live.textContent = msg;
         });
-        try { rec.start(); } catch (e) { toast("Couldn't start the microphone: " + e.message); finish(false); }
-      } else live.textContent = "Timing… read aloud, then tap Stop.";
+        try { rec.start(); } catch (e) { rec = null; toast("Couldn't start the microphone: " + e.message); return; }
+      }
+      running = true; stopping = false; t0 = Date.now(); elapsed = 0; tick = setInterval(setTimer, 250); setTimer();
+      recBtn.classList.add("recording"); recBtn.textContent = "■ Stop";
+      recBtn.setAttribute("aria-label", "Stop reading and check");
+      liveSession(useWhisper ? "Recording… read the text aloud. It's checked after you tap Stop." : srOK ? "Listening… start reading." : "Timing… read aloud, then tap Stop.");
+      enterSession();
+      try { if (navigator.wakeLock) navigator.wakeLock.request("screen").then(w => { if (running) wakeLock = w; else w.release().catch(() => {}); }).catch(() => {}); } catch (e) {} // never awaited
     }
+    // Stop: flip the UI to "stopped" immediately, then wind down the engine (bounded to ~1 s).
     async function finish(check = true) {
-      if (!running) return;
-      running = false; elapsed = (Date.now() - t0) / 1000; clearInterval(tick); setTimer();
-      recBtn.classList.remove("recording"); recBtn.innerHTML = "🎤 Start again";
-      try { wakeLock && wakeLock.release(); } catch (e) {} wakeLock = null;
-      if (mrec) {
-        recBtn.disabled = true; live.textContent = "Finishing recording…";
-        const { blob, mime } = await mrec.stop(); mrec = null; recBtn.disabled = false;
+      if (!running || stopping) return;
+      stopping = true; running = false;
+      elapsed = (Date.now() - t0) / 1000; clearInterval(tick); tick = null; setTimer();
+      recBtn.classList.remove("recording"); recBtn.textContent = "🎤 Start again"; recBtn.removeAttribute("aria-label");
+      exitSession(); releaseWake();
+      const bounded = p => Promise.race([p, new Promise(r => setTimeout(r, 1000))]);
+      try {
+        if (mrec) {
+          const m = mrec; mrec = null;
+          recBtn.disabled = true; live.textContent = "Finishing recording…";
+          const out = await bounded(m.stop());
+          recBtn.disabled = false;
+          if (!out) { m.abort(); live.textContent = "The recording couldn't be finished. Please try again."; return; }
+          if (!check) return;
+          if (!out.blob.size) { live.textContent = "Nothing was recorded. Check the microphone and try again."; return; }
+          pending = { textId: t.id, blob: out.blob, mime: out.mime, recordedSeconds: Math.round(elapsed * 10) / 10 };
+          return upload();
+        }
+        const r = rec; rec = null;
+        if (r) { live.textContent = "Finishing…"; recBtn.disabled = true; await bounded(r.stop()); r.abort(); recBtn.disabled = false; }
+        const transcript = r ? r.text() : "";
         if (!check) return;
-        if (!blob.size) { live.textContent = "Nothing was recorded. Check the microphone and try again."; return; }
-        pending = { textId: t.id, blob, mime, recordedSeconds: Math.round(elapsed * 10) / 10 };
-        return upload();
-      }
-      if (rec) { live.textContent = "Finishing…"; recBtn.disabled = true; await rec.stop(); recBtn.disabled = false; }
-      const transcript = rec ? rec.text() : "";
-      rec = null;
-      if (!check) return;
-      if (srOK) {
-        if (!transcript.trim()) { live.textContent = "I didn't catch any words. Check the microphone, move a bit closer, and try again."; return; }
-        const a = createAttempt(t, transcript, elapsed, "speech", { engine: "builtin", timing: "startstop", recordedSeconds: Math.round(elapsed * 10) / 10 });
-        go("#/results/" + a.id);
-      } else {
-        live.textContent = `Time: ${fmtTime(elapsed)}. Now type or paste what was read, then press Check.`;
-        showTyped();
-      }
+        if (srOK) {
+          if (!transcript.trim()) { live.textContent = "I didn't catch any words. Check the microphone, move a bit closer, and try again."; return; }
+          const a = createAttempt(t, transcript, elapsed, "speech", { engine: "builtin", timing: "startstop", recordedSeconds: Math.round(elapsed * 10) / 10 });
+          go("#/results/" + a.id);
+        } else {
+          live.textContent = `Time: ${fmtTime(elapsed)}. Now type or paste what was read, then press Check.`;
+          showTyped();
+        }
+      } finally { stopping = false; recBtn.disabled = false; }
     }
-    recBtn.onclick = () => running ? finish(true) : begin();
+    // Respond to the tap itself (pointerup) as well as click, so a busy page or a lost click on iOS
+    // can't swallow Stop. A short guard stops one tap being handled twice.
+    let lastTap = 0;
+    const onRecTap = e => {
+      if (e.type === "pointerup" && e.pointerType === "mouse") return; // mouse: use click
+      const now = Date.now(); if (now - lastTap < 600) return; lastTap = now;
+      if (e.cancelable && e.type === "pointerup") e.preventDefault();
+      running ? finish(true) : begin();
+    };
+    recBtn.addEventListener("pointerup", onRecTap);
+    recBtn.addEventListener("click", onRecTap);
     $("#typed-check").onclick = () => {
       const txt = $("#typed-text").value.trim();
       if (!txt) return toast("Type or paste the transcript first.");
@@ -1306,6 +1408,7 @@ if (typeof module !== "undefined") module.exports = Whisper;
     // Leaving mid-recording: keep what was recorded so far as a pending recording (not uploaded).
     cleanup = () => {
       clearInterval(tick); if (rec) rec.abort(); try { wakeLock && wakeLock.release(); } catch (e) {}
+      document.body.classList.remove("in-session"); if (ro) ro.disconnect();
       if (mrec && running) { const secs = Math.round((Date.now() - t0) / 100) / 10; const m = mrec; m.stop().then(({ blob, mime }) => { if (blob.size) pending = { textId: t.id, blob, mime, recordedSeconds: secs, error: "You left the page before tapping Stop, so this recording wasn't sent." }; }); }
     };
   }
