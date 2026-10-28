@@ -813,6 +813,135 @@ const Align = (function () {
 if (typeof module !== "undefined") module.exports = Align;
 
 </script>
+<script id="whisper-lib">
+/* ==== OPENAI WHISPER ENGINE (optional). Pure helpers are unit-tested in tests/whisper.test.js ==== */
+const Whisper = (function () {
+  const ENDPOINT = "https://api.openai.com/v1/audio/transcriptions";
+  const MODELS_ENDPOINT = "https://api.openai.com/v1/models";
+  const MAX_BYTES = 25 * 1024 * 1024; // OpenAI upload limit
+
+  // Choose a recording format the browser supports. iOS Safari records audio/mp4 (AAC);
+  // Chrome/Edge/Firefox record webm/opus. Both are accepted by the OpenAI API.
+  function pickMimeType(isTypeSupported, preferMp4) {
+    const webm = ["audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus"];
+    const mp4 = ["audio/mp4", "audio/mp4;codecs=mp4a.40.2", "audio/aac"];
+    const order = preferMp4 ? mp4.concat(webm) : webm.concat(mp4);
+    for (const t of order) { try { if (isTypeSupported(t)) return t; } catch (e) {} }
+    return ""; // let the browser choose its default
+  }
+  function extFor(mime) {
+    const m = String(mime || "").toLowerCase();
+    if (m.includes("webm")) return "webm";
+    if (m.includes("ogg")) return "ogg";
+    if (m.includes("mp4") || m.includes("aac") || m.includes("m4a")) return "m4a";
+    if (m.includes("wav")) return "wav";
+    if (m.includes("mpeg") || m.includes("mp3")) return "mp3";
+    return "webm";
+  }
+
+  // Build the multipart request body.
+  function buildForm(blob, mime, FormDataCtor) {
+    const fd = new (FormDataCtor || FormData)();
+    fd.append("file", blob, "reading." + extFor(mime || blob.type));
+    fd.append("model", "whisper-1");
+    fd.append("language", "en");
+    fd.append("response_format", "verbose_json");
+    fd.append("timestamp_granularities[]", "word");
+    fd.append("temperature", "0");
+    // IMPORTANT: we deliberately do NOT send the target text as a "prompt". Whisper uses the prompt
+    // as context and leans towards producing it, so passing the original text would make the
+    // transcript look like the text even where he misread, skipped or swapped words. That would hide
+    // exactly the mistakes this app is meant to show. We want what he actually said.
+    return fd;
+  }
+
+  // Normalise a verbose_json response into { text, words:[{word,start,end}], duration, segments }.
+  function parseResponse(json) {
+    if (!json || typeof json !== "object") throw new Error("Empty response from OpenAI");
+    const words = Array.isArray(json.words) ? json.words
+      .filter(w => w && typeof w.word === "string" && w.word.trim())
+      .map(w => ({ word: w.word.trim(), start: num(w.start), end: num(w.end) })) : [];
+    const segments = Array.isArray(json.segments) ? json.segments.map(s => ({ text: String(s.text || "").trim(), start: num(s.start), end: num(s.end) })) : [];
+    const text = typeof json.text === "string" ? json.text.trim() : words.map(w => w.word).join(" ");
+    return { text, words, segments, duration: num(json.duration) };
+  }
+  function num(v) { const n = typeof v === "number" ? v : parseFloat(v); return isFinite(n) ? n : null; }
+
+  // Text to feed the alignment: the word list if we have it (no punctuation surprises), otherwise the text.
+  function transcriptText(parsed) {
+    return parsed.words.length ? parsed.words.map(w => w.word).join(" ") : parsed.text;
+  }
+
+  // Seconds from the first spoken word to the last. Falls back to segment times. null if unusable.
+  function spokenSeconds(parsed) {
+    let a = null, b = null;
+    const ws = parsed.words.filter(w => w.start != null && w.end != null);
+    if (ws.length >= 2) { a = ws[0].start; b = ws[ws.length - 1].end; }
+    else {
+      const ss = parsed.segments.filter(s => s.start != null && s.end != null && s.text);
+      if (ss.length) { a = ss[0].start; b = ss[ss.length - 1].end; }
+    }
+    if (a == null || b == null || !(b > a) || b - a < 1) return null;
+    return Math.round((b - a) * 10) / 10;
+  }
+
+  // Map an HTTP failure / exception to a friendly error kind + message.
+  function classifyError(status, body, err, online) {
+    const apiMsg = body && body.error && body.error.message ? String(body.error.message) : "";
+    const code = body && body.error && (body.error.code || body.error.type) ? String(body.error.code || body.error.type) : "";
+    if (err) {
+      if (err.name === "AbortError") return { kind: "timeout", message: "OpenAI took too long to reply. Check the connection and try again." };
+      if (online === false) return { kind: "offline", message: "This device seems to be offline. Connect to the internet and try again." };
+      return { kind: "network", message: "Couldn't reach OpenAI. The connection may have dropped, or the browser blocked the request (network/CORS problem). Try again in a moment." };
+    }
+    if (status === 401) return { kind: "invalid-key", message: "OpenAI didn't accept the API key. Check it in Settings (it may have been revoked or mistyped)." };
+    if (status === 403) return { kind: "forbidden", message: "This API key isn't allowed to use speech-to-text (check its permissions or project in OpenAI)." + (apiMsg ? " " + apiMsg : "") };
+    if (status === 429 && /quota|billing/i.test(code + " " + apiMsg)) return { kind: "quota", message: "The OpenAI account has run out of credit or hit its spending limit. Top up or raise the limit, or use the built-in recogniser." };
+    if (status === 429) return { kind: "rate-limit", message: "OpenAI is busy (too many requests). Wait a few seconds and try again." };
+    if (status === 413) return { kind: "too-large", message: "The recording is too large for OpenAI (25 MB limit). Try a shorter text." };
+    if (status === 400) return { kind: "bad-audio", message: "OpenAI couldn't use this recording" + (apiMsg ? ": " + apiMsg : ".") + " Try recording again." };
+    if (status >= 500) return { kind: "server", message: "OpenAI had a problem (" + status + "). Try again in a moment." };
+    return { kind: "unknown", message: "Transcription failed" + (status ? " (" + status + ")" : "") + (apiMsg ? ": " + apiMsg : ".") };
+  }
+  class WhisperError extends Error { constructor(info, status) { super(info.message); this.kind = info.kind; this.status = status || 0; } }
+
+  async function readJson(res) { try { return await res.json(); } catch (e) { return null; } }
+  const isOnline = () => (typeof navigator !== "undefined" && "onLine" in navigator) ? navigator.onLine : true;
+
+  async function transcribe(blob, mime, apiKey, opts = {}) {
+    const f = opts.fetch || fetch;
+    if (!apiKey) throw new WhisperError({ kind: "no-key", message: "No OpenAI API key saved. Add one in Settings." });
+    if (!blob || !blob.size) throw new WhisperError({ kind: "empty", message: "The recording was empty. Check the microphone and try again." });
+    if (blob.size > MAX_BYTES) throw new WhisperError({ kind: "too-large", message: `The recording is ${(blob.size / 1048576).toFixed(1)} MB, over OpenAI's 25 MB limit. Try a shorter text.` });
+    const ctl = typeof AbortController !== "undefined" ? new AbortController() : null;
+    const timer = ctl ? setTimeout(() => ctl.abort(), opts.timeoutMs || 120000) : null;
+    let res;
+    try {
+      res = await f(ENDPOINT, { method: "POST", headers: { Authorization: "Bearer " + apiKey }, body: buildForm(blob, mime, opts.FormData), signal: ctl ? ctl.signal : undefined });
+    } catch (err) { throw new WhisperError(classifyError(0, null, err, isOnline())); }
+    finally { if (timer) clearTimeout(timer); }
+    const body = await readJson(res);
+    if (!res.ok) throw new WhisperError(classifyError(res.status, body), res.status);
+    return parseResponse(body);
+  }
+
+  // Cheap check that a key works: list models (no audio, no cost).
+  async function testKey(apiKey, opts = {}) {
+    const f = opts.fetch || fetch;
+    let res;
+    try { res = await f(MODELS_ENDPOINT, { headers: { Authorization: "Bearer " + apiKey } }); }
+    catch (err) { return { ok: false, ...classifyError(0, null, err, isOnline()) }; }
+    if (res.ok) return { ok: true, message: "The key works." };
+    return { ok: false, ...classifyError(res.status, await readJson(res)) };
+  }
+
+  const looksLikeKey = k => /^sk-[A-Za-z0-9_\-]{20,}$/.test(String(k || "").trim());
+
+  return { pickMimeType, extFor, buildForm, parseResponse, transcriptText, spokenSeconds, classifyError, transcribe, testKey, looksLikeKey, WhisperError, MAX_BYTES, ENDPOINT };
+})();
+if (typeof module !== "undefined") module.exports = Whisper;
+
+</script>
 <script id="app">
 /* ==== APP ==== */
 (function () {
@@ -828,7 +957,7 @@ if (typeof module !== "undefined") module.exports = Align;
   /* ---------- storage ---------- */
   function load(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } }
   function save(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { toast("Couldn't save (storage full or private browsing)."); return false; } }
-  const DEFAULT_SETTINGS = { fontSize: 24, dyslexia: false, theme: "light", lang: "en-GB", showListen: false, rate: 0.95 };
+  const DEFAULT_SETTINGS = { fontSize: 24, dyslexia: false, theme: "light", lang: "en-GB", showListen: false, rate: 0.95, engine: "builtin" };
   let settings = Object.assign({}, DEFAULT_SETTINGS, load(KEY_SETTINGS, {}));
   const attempts = () => load(KEY_ATTEMPTS, []);
   function saveAttempt(a) { const all = attempts(); const i = all.findIndex(x => x.id === a.id); if (i >= 0) all[i] = a; else all.push(a); save(KEY_ATTEMPTS, all); }
@@ -981,19 +1110,57 @@ if (typeof module !== "undefined") module.exports = Align;
     };
   }
 
+  /* ---------- OpenAI key + recording held in memory until transcribed ---------- */
+  const KEY_OPENAI = "readaloud.v1.openaiKey";
+  const getKey = () => { try { return localStorage.getItem(KEY_OPENAI) || ""; } catch (e) { return ""; } };
+  const hasMR = typeof window.MediaRecorder !== "undefined" && !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+  const whisperActive = () => settings.engine === "whisper" && !!getKey();
+  // A recording that hasn't been transcribed successfully yet. Kept until success, even if he
+  // leaves the page, so it can be retried. (Memory only: it is lost if the app is closed.)
+  let pending = null; // { textId, blob, mime, recordedSeconds, error }
+
+  // Record the microphone with MediaRecorder (whole reading, one file).
+  function makeMediaRecorder() {
+    let stream = null, mr = null, chunks = [], mime = "";
+    return {
+      async start() {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, channelCount: 1 } });
+        mime = Whisper.pickMimeType(t => MediaRecorder.isTypeSupported ? MediaRecorder.isTypeSupported(t) : false, isIOS);
+        mr = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+        chunks = [];
+        mr.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
+        mr.start(1000); // gather data every second so nothing is lost if stop is abrupt
+      },
+      stop() {
+        return new Promise(res => {
+          const done = () => { try { stream && stream.getTracks().forEach(tr => tr.stop()); } catch (e) {} const type = mime || (mr && mr.mimeType) || (chunks[0] && chunks[0].type) || "audio/webm"; res({ blob: new Blob(chunks, { type }), mime: type }); };
+          if (!mr || mr.state === "inactive") return done();
+          mr.onstop = done; try { mr.stop(); } catch (e) { done(); }
+        });
+      },
+      abort() { try { mr && mr.state !== "inactive" && mr.stop(); } catch (e) {} try { stream && stream.getTracks().forEach(tr => tr.stop()); } catch (e) {} }
+    };
+  }
+
   /* ---------- reading screen ---------- */
   function showRead(t) {
     document.title = t.title + " · Read Aloud";
     const secure = window.isSecureContext;
-    const srOK = !!SR && secure;
+    const useWhisper = whisperActive() && hasMR && secure;
+    const srOK = useWhisper || (!!SR && secure);
     const extraNotes = [];
-    if (!SR) extraNotes.push(`<div class="notice"><b>Speech recognition isn't available in this browser</b> (for example Firefox). Use Safari on iPad/iPhone or Chrome/Edge on a laptop. You can still time yourself and type or paste what you read below.</div>`);
-    else if (!secure) extraNotes.push(`<div class="notice"><b>The microphone needs a secure (https://) page.</b> Open the app from its https link to use speech recognition. You can still use the typed option below.</div>`);
+    if (whisperActive() && !useWhisper) extraNotes.push(`<div class="notice">OpenAI Whisper is selected, but ${!secure ? "the microphone needs a secure (https://) page" : "this browser can't record audio"}. ${SR && secure ? "Using the built-in recogniser instead." : ""}</div>`);
+    if (!useWhisper) {
+      if (!SR) extraNotes.push(`<div class="notice"><b>Speech recognition isn't available in this browser</b> (for example Firefox). Use Safari on iPad/iPhone or Chrome/Edge on a laptop${hasMR ? ", or add an OpenAI key in Settings to use Whisper" : ""}. You can still time yourself and type or paste what you read below.</div>`);
+      else if (!secure) extraNotes.push(`<div class="notice"><b>The microphone needs a secure (https://) page.</b> Open the app from its https link to use speech recognition. You can still use the typed option below.</div>`);
+    }
+    const engineLabel = useWhisper ? "OpenAI Whisper" : "built-in recogniser";
     view().innerHTML = `
       <button class="btn" id="back">← Library</button>
       <h1>${esc(t.title)}</h1>
       <div class="source"><span class="badge">${esc(TYPE_LABELS[t.type] || t.type)}</span> <span class="level">${levelDots(t.level)}</span> · ${wordCount(t)} words · ${esc(t.source)}</div>
       ${extraNotes.join("")}
+      <div id="retry" class="hidden"></div>
       <div class="toolbar">
         <button class="btn" id="font-dn" aria-label="Smaller text">A−</button>
         <button class="btn" id="font-up" aria-label="Larger text">A+</button>
@@ -1008,7 +1175,7 @@ if (typeof module !== "undefined") module.exports = Align;
         <textarea id="typed-text" placeholder="Type or paste the transcript here…"></textarea>
         <div class="row" style="margin-top:10px"><button class="btn primary" id="typed-check">Check my reading</button></div>
       </div>
-      ${srOK ? `<p class="small"><button class="btn" id="show-typed" style="min-height:44px">Microphone not working? Type or paste instead</button></p>` : ""}
+      ${srOK ? `<p class="small"><button class="btn" id="show-typed" style="min-height:44px">Microphone not working? Type or paste instead</button> <span class="muted">Using: ${engineLabel}</span></p>` : ""}
       <h2>Coming soon</h2>
       <div class="soon">
         <div class="panel"><h3>✍️ Write a summary <span class="tag">Soon</span></h3><p class="muted small">Sum up the text in a few sentences.</p></div>
@@ -1026,17 +1193,73 @@ if (typeof module !== "undefined") module.exports = Align;
     $("#dys").onclick = e => { settings.dyslexia = !settings.dyslexia; applySettings(); e.currentTarget.textContent = (settings.dyslexia ? "✓ " : "") + "Easy-read font"; };
     $("#theme").onclick = e => { settings.theme = settings.theme === "dark" ? "light" : "dark"; applySettings(); e.currentTarget.textContent = settings.theme === "dark" ? "☀️ Light" : "🌙 Dark"; };
     if ($("#btn-listen")) $("#btn-listen").onclick = e => listen($("#reading"), e.currentTarget);
-    if ($("#show-typed")) $("#show-typed").onclick = () => { $("#typed").classList.remove("hidden"); $("#typed-text").focus(); };
+    if ($("#show-typed")) $("#show-typed").onclick = () => showTyped();
 
-    let t0 = 0, elapsed = 0, tick = null, rec = null, wakeLock = null, running = false;
+    let t0 = 0, elapsed = 0, tick = null, rec = null, mrec = null, wakeLock = null, running = false, uploading = false;
     const recBtn = $("#rec"), live = $("#live"), timer = $("#timer");
     const setTimer = () => { timer.textContent = fmtTime(running ? (Date.now() - t0) / 1000 : elapsed); };
+    const showTyped = () => { $("#typed").classList.remove("hidden"); $("#typed-text").focus(); };
+
+    // Upload a held recording to OpenAI. On failure the recording stays in `pending` for a retry.
+    async function upload() {
+      if (!pending || uploading) return;
+      uploading = true; recBtn.disabled = true;
+      $("#retry").classList.add("hidden");
+      live.innerHTML = `<span class="dot" style="background:var(--accent)"></span> Checking your reading…`;
+      try {
+        const parsed = await Whisper.transcribe(pending.blob, pending.mime, getKey());
+        const text = Whisper.transcriptText(parsed);
+        if (!text.trim()) throw new Whisper.WhisperError({ kind: "empty", message: "OpenAI didn't hear any words in the recording. Check the microphone and try again." });
+        const spoken = Whisper.spokenSeconds(parsed);
+        const a = createAttempt(t, text, spoken || pending.recordedSeconds, "speech", { engine: "whisper", timing: spoken ? "spoken" : "startstop", recordedSeconds: pending.recordedSeconds, spokenSeconds: spoken });
+        pending = null; // only now is it safe to drop the recording
+        uploading = false; recBtn.disabled = false;
+        go("#/results/" + a.id);
+      } catch (e) {
+        uploading = false; recBtn.disabled = false;
+        if (pending) pending.error = e.message || String(e);
+        showRetry();
+      }
+    }
+    function showRetry() {
+      if (!pending || pending.textId !== t.id) return;
+      const box = $("#retry");
+      box.className = "notice";
+      box.innerHTML = `<b>Your recording is safe, but it couldn't be checked yet.</b><br>${esc(pending.error || "")}
+        <div class="row" style="margin-top:10px">
+          <button class="btn primary" id="retry-up">↻ Try sending again</button>
+          <button class="btn" id="retry-typed">Type or paste instead</button>
+          <button class="btn" id="retry-dl">⬇ Save recording</button>
+          <button class="btn danger" id="retry-discard">Discard recording</button>
+        </div>`;
+      live.textContent = "Recording kept. Try sending it again, or type/paste a transcript.";
+      $("#retry-up").onclick = () => upload();
+      $("#retry-typed").onclick = () => { elapsed = pending.recordedSeconds; setTimer(); showTyped(); };
+      $("#retry-dl").onclick = () => { const url = URL.createObjectURL(pending.blob); const a = document.createElement("a"); a.href = url; a.download = "reading-" + t.id + "." + Whisper.extFor(pending.mime); document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 5000); };
+      $("#retry-discard").onclick = () => { if (confirm("Discard this recording? It hasn't been checked yet.")) { pending = null; box.className = "hidden"; live.textContent = "Tap Start to read again."; } };
+      box.scrollIntoView({ block: "nearest" });
+    }
+    if (pending && pending.textId === t.id) showRetry();
+
     async function begin() {
+      if (pending && pending.textId === t.id && !confirm("You have a recording that hasn't been checked yet. Start a new one and discard it?")) return;
       stopSpeaking();
+      if (useWhisper) {
+        mrec = makeMediaRecorder();
+        try { await mrec.start(); }
+        catch (e) {
+          mrec = null;
+          const msg = e && e.name === "NotAllowedError" ? "Microphone permission was blocked. Allow the microphone for this site (iPhone/iPad: Settings › Safari › Microphone), then try again." : e && e.name === "NotFoundError" ? "No microphone was found." : "Couldn't start recording: " + (e && e.message || e);
+          toast(msg); live.textContent = msg; return;
+        }
+        pending = null; $("#retry").className = "hidden";
+      }
       running = true; t0 = Date.now(); elapsed = 0; tick = setInterval(setTimer, 250); setTimer();
       recBtn.classList.add("recording"); recBtn.innerHTML = "■ Stop &amp; check";
       try { if (navigator.wakeLock) wakeLock = await navigator.wakeLock.request("screen"); } catch (e) {}
-      if (srOK) {
+      if (useWhisper) {
+        live.innerHTML = `<span class="dot"></span> Recording… read the text aloud. (Your reading is checked after you tap Stop.)`;
+      } else if (srOK) {
         live.innerHTML = `<span class="dot"></span> Listening… start reading.`;
         rec = makeRecognizer(txt => { live.textContent = txt ? "…" + txt.slice(-160) : "Listening…"; }, reason => {
           const msg = { permission: "Microphone permission was blocked. Allow the microphone for this site (on iPhone/iPad: Settings › Safari › Microphone, and Settings › Privacy › Speech Recognition), then try again. Or use the typed option.", nomic: "No microphone was found.", network: "Speech recognition needs an internet connection on this device. Check the connection.", lang: "This language isn't supported for recognition here. Try another in Settings.", restart: "Speech recognition stopped unexpectedly. Tap Stop and try again." }[reason];
@@ -1051,33 +1274,46 @@ if (typeof module !== "undefined") module.exports = Align;
       running = false; elapsed = (Date.now() - t0) / 1000; clearInterval(tick); setTimer();
       recBtn.classList.remove("recording"); recBtn.innerHTML = "🎤 Start again";
       try { wakeLock && wakeLock.release(); } catch (e) {} wakeLock = null;
+      if (mrec) {
+        recBtn.disabled = true; live.textContent = "Finishing recording…";
+        const { blob, mime } = await mrec.stop(); mrec = null; recBtn.disabled = false;
+        if (!check) return;
+        if (!blob.size) { live.textContent = "Nothing was recorded. Check the microphone and try again."; return; }
+        pending = { textId: t.id, blob, mime, recordedSeconds: Math.round(elapsed * 10) / 10 };
+        return upload();
+      }
       if (rec) { live.textContent = "Finishing…"; recBtn.disabled = true; await rec.stop(); recBtn.disabled = false; }
       const transcript = rec ? rec.text() : "";
       rec = null;
       if (!check) return;
       if (srOK) {
         if (!transcript.trim()) { live.textContent = "I didn't catch any words. Check the microphone, move a bit closer, and try again."; return; }
-        const a = createAttempt(t, transcript, elapsed, "speech");
+        const a = createAttempt(t, transcript, elapsed, "speech", { engine: "builtin", timing: "startstop", recordedSeconds: Math.round(elapsed * 10) / 10 });
         go("#/results/" + a.id);
       } else {
         live.textContent = `Time: ${fmtTime(elapsed)}. Now type or paste what was read, then press Check.`;
-        $("#typed").classList.remove("hidden"); $("#typed-text").focus();
+        showTyped();
       }
     }
     recBtn.onclick = () => running ? finish(true) : begin();
     $("#typed-check").onclick = () => {
       const txt = $("#typed-text").value.trim();
       if (!txt) return toast("Type or paste the transcript first.");
-      const a = createAttempt(t, txt, elapsed || 0, "typed");
+      const a = createAttempt(t, txt, elapsed || 0, "typed", { engine: "typed", timing: "startstop" });
+      if (pending && pending.textId === t.id) pending = null; // a typed transcript replaces the held recording
       go("#/results/" + a.id);
     };
-    cleanup = () => { clearInterval(tick); if (rec) rec.abort(); try { wakeLock && wakeLock.release(); } catch (e) {} };
+    // Leaving mid-recording: keep what was recorded so far as a pending recording (not uploaded).
+    cleanup = () => {
+      clearInterval(tick); if (rec) rec.abort(); try { wakeLock && wakeLock.release(); } catch (e) {}
+      if (mrec && running) { const secs = Math.round((Date.now() - t0) / 100) / 10; const m = mrec; m.stop().then(({ blob, mime }) => { if (blob.size) pending = { textId: t.id, blob, mime, recordedSeconds: secs, error: "You left the page before tapping Stop, so this recording wasn't sent." }; }); }
+    };
   }
 
-  function createAttempt(t, transcript, seconds, method) {
+  function createAttempt(t, transcript, seconds, method, extra) {
     const r = Align.align(t.body, transcript);
     const s = Align.score(r, [], seconds);
-    const a = { id: "a" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), textId: t.id, title: t.title, level: t.level, type: t.type, date: new Date().toISOString(), seconds: Math.round(seconds * 10) / 10, method, transcript, overrides: [] };
+    const a = Object.assign({ id: "a" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), textId: t.id, title: t.title, level: t.level, type: t.type, date: new Date().toISOString(), seconds: Math.round(seconds * 10) / 10, method, engine: method === "typed" ? "typed" : "builtin", timing: "startstop", transcript, overrides: [] }, extra || {});
     Object.assign(a, pickScore(s));
     saveAttempt(a);
     return a;
@@ -1111,7 +1347,7 @@ if (typeof module !== "undefined") module.exports = Align;
         <button class="btn" id="back">← Library</button>
         <h1>${esc(t.title)}</h1>
         <div class="cheer">${cheer(s.accuracy, s.attempted)}</div>
-        <p class="muted">${s.unreached ? `You read ${s.attempted} of ${s.totalWords} words. ` : ""}${delta != null ? (delta > 0 ? `That's ${delta}% better than last time! ` : delta === 0 ? "Same score as last time. " : "") : ""}${a.method === "typed" ? "(Checked from a typed transcript.)" : ""}</p>
+        <p class="muted">${s.unreached ? `You read ${s.attempted} of ${s.totalWords} words. ` : ""}${delta != null ? (delta > 0 ? `That's ${delta}% better than last time! ` : delta === 0 ? "Same score as last time. " : "") : ""}${a.method === "typed" ? "(Checked from a typed transcript.)" : a.engine === "whisper" ? "(Checked with OpenAI Whisper.)" : ""}</p>
         <div class="stats">
           <div class="stat"><div class="v">${s.accuracy}%</div><div class="l">Accuracy</div></div>
           <div class="stat"><div class="v">${s.wpm ?? "–"}</div><div class="l">Words per minute</div></div>
@@ -1119,8 +1355,9 @@ if (typeof module !== "undefined") module.exports = Align;
           <div class="stat"><div class="v">${s.sub}</div><div class="l">Different word heard</div></div>
           <div class="stat"><div class="v">${s.skip}</div><div class="l">Words missed</div></div>
           <div class="stat"><div class="v">${s.extra}</div><div class="l">Extra words</div></div>
-          <div class="stat"><div class="v">${fmtTime(a.seconds)}</div><div class="l">Time</div></div>
+          <div class="stat"><div class="v">${fmtTime(a.timing === "spoken" ? a.seconds : (a.recordedSeconds ?? a.seconds))}</div><div class="l">${a.timing === "spoken" ? "Speaking time" : "Time"}</div></div>
         </div>
+        ${a.timing === "spoken" ? `<p class="muted small">Words per minute uses the time from your first spoken word to your last (${fmtTime(a.seconds)}), so the pause before you started and after you finished doesn't count. Start-to-stop time was ${fmtTime(a.recordedSeconds || 0)}.</p>` : ""}
         <div class="notice info small"><b>Remember:</b> the speech recogniser makes mistakes too, especially with names, old-fashioned words and accents, so a highlighted word may not be your mistake. <b>Tap a highlighted word</b> to mark it as a recogniser error and the score will update.</div>
         <div class="legend">
           <span><i class="sw" style="background:var(--panel);border:1px solid var(--line)"></i>Read correctly</span>
@@ -1224,7 +1461,7 @@ if (typeof module !== "undefined") module.exports = Align;
     $("#clear").onclick = () => { if (confirm("Delete all saved reading history on this device? Export first if you want to keep it.")) { save(KEY_ATTEMPTS, []); showProgress(); } };
   }
   function toCSV(list) {
-    const cols = ["date", "textId", "title", "type", "level", "method", "seconds", "accuracy", "wpm", "wcpm", "attempted", "correct", "substituted", "skipped", "extra", "notReached", "tricky", "transcript"];
+    const cols = ["date", "textId", "title", "type", "level", "method", "engine", "timing", "seconds", "recordedSeconds", "accuracy", "wpm", "wcpm", "attempted", "correct", "substituted", "skipped", "extra", "notReached", "tricky", "transcript"];
     const q = v => { v = Array.isArray(v) ? v.join("; ") : v == null ? "" : String(v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
     return "\ufeff" + cols.join(",") + "\n" + list.map(a => cols.map(c => q(a[c])).join(",")).join("\n");
   }
@@ -1251,15 +1488,65 @@ if (typeof module !== "undefined") module.exports = Align;
         <div class="setting"><div><b>Show "Listen" button</b><div class="muted small">Hear the text read aloud as an example of fluent reading.${hasTTS ? "" : " (Not available in this browser.)"}</div></div>${sw("showListen")}</div>
         <div class="setting"><div><b>Listening speed</b></div>${seg("rate", [[0.8, "Slow"], [0.95, "Normal"], [1.1, "Fast"]])}</div>
       </div>
+      <h2>Transcription engine</h2>
+      <div class="panel" id="engine-panel">
+        <div class="setting"><div><b>How his reading is turned into text</b><div class="muted small">Built-in is free and shows words live. Whisper is usually more accurate but needs an OpenAI API key and costs a little per reading.</div></div>
+          <div class="seg" id="engine-seg">
+            <button data-v="builtin" aria-pressed="${settings.engine !== "whisper"}">Built-in (free, instant)</button>
+            <button data-v="whisper" aria-pressed="${settings.engine === "whisper"}" ${getKey() ? "" : "disabled title=\"Save an OpenAI key first\""}>OpenAI Whisper (more accurate)</button>
+          </div></div>
+        <div class="setting" style="display:block">
+          <label for="oa-key"><b>OpenAI API key</b></label>
+          <div class="muted small" id="key-status">${getKey() ? "A key is saved on this device (ending …" + esc(getKey().slice(-4)) + ")." : "No key saved."}</div>
+          <div class="row" style="margin-top:8px">
+            <input id="oa-key" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="${getKey() ? "Paste a new key to replace it" : "sk-…"}" style="flex:1 1 260px;min-height:44px;border-radius:12px;border:1px solid var(--line);background:var(--panel);padding:0 12px">
+            <button class="btn primary" id="key-save">Save key</button>
+            <button class="btn" id="key-test" ${getKey() ? "" : "disabled"}>Test key</button>
+            <button class="btn danger" id="key-remove" ${getKey() ? "" : "disabled"}>Remove key</button>
+          </div>
+          <div id="key-msg" aria-live="polite"></div>
+          <div class="notice info small" style="margin-top:12px">
+            <b>About the key:</b> it is stored only in this browser on this device (it never goes anywhere except to OpenAI with each request). When Whisper is on, the <b>recording of his reading is sent to OpenAI</b> to be transcribed.
+            Use a <b>dedicated key</b> made just for this app, in an OpenAI project with a <b>low monthly spending limit</b> (e.g. a few pounds), so a lost or copied device can't run up a bill. You can revoke the key at any time on the OpenAI website.
+            Cost is roughly 0.6 cents (US) per minute of audio at OpenAI's published whisper-1 price, so a 2-minute reading is about 1 cent. Check OpenAI's current pricing.
+          </div>
+        </div>
+      </div>
       <h2>About</h2>
       <div class="panel small">
         <p><b>Privacy:</b> reading history and settings are stored only in this browser on this device. Nothing is sent to us, as there is no server and no account.</p>
-        <p><b>But note:</b> speech recognition is provided by the browser. On iPhone/iPad (Safari) and in Chrome or Edge, the audio of the reading may be sent to Apple, Google or Microsoft to turn it into text. Read-aloud voices are provided by the device.</p>
-        <p class="muted">Speech recognition: ${SR ? (window.isSecureContext ? "available" : "needs an https:// page") : "not available in this browser"} · Read aloud: ${hasTTS ? "available" : "not available"}</p>
+        <p><b>OpenAI Whisper (optional):</b> only if you add a key and choose Whisper, each reading's audio is sent from this device directly to OpenAI for transcription, and the key is stored in this browser.${settings.engine === "whisper" && getKey() ? " <b>Whisper is currently ON.</b>" : " Whisper is currently off."}</p>
+        <p><b>Built-in recogniser:</b> speech recognition is provided by the browser. On iPhone/iPad (Safari) and in Chrome or Edge, the audio of the reading may be sent to Apple, Google or Microsoft to turn it into text. Read-aloud voices are provided by the device.</p>
+        <p class="muted">Speech recognition: ${SR ? (window.isSecureContext ? "available" : "needs an https:// page") : "not available in this browser"} · Read aloud: ${hasTTS ? "available" : "not available"} · Audio recording (for Whisper): ${hasMR ? "available" : "not available"}</p>
       </div>`;
     view().querySelectorAll(".switch").forEach(b => b.onclick = () => { const k = b.dataset.k; settings[k] = !settings[k]; b.setAttribute("aria-checked", settings[k]); applySettings(); });
     view().querySelectorAll(".seg").forEach(s => s.querySelectorAll("button").forEach(b => b.onclick = () => { const k = s.dataset.k; settings[k] = k === "rate" ? +b.dataset.v : b.dataset.v; s.querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x === b)); applySettings(); }));
     $("#lang").onchange = e => { settings.lang = e.target.value; applySettings(); };
+    const keyMsg = (html, cls) => { $("#key-msg").innerHTML = html ? `<div class="notice ${cls || ""} small">${html}</div>` : ""; };
+    $("#engine-seg").querySelectorAll("button").forEach(b => b.onclick = () => {
+      if (b.dataset.v === "whisper" && !getKey()) return keyMsg("Save an OpenAI key first.");
+      settings.engine = b.dataset.v; applySettings(); showSettings();
+    });
+    $("#key-save").onclick = () => {
+      const k = $("#oa-key").value.trim();
+      if (!k) return keyMsg("Paste the key into the box first.");
+      if (!Whisper.looksLikeKey(k) && !confirm("That doesn't look like an OpenAI key (they usually start with \"sk-\"). Save it anyway?")) return;
+      try { localStorage.setItem(KEY_OPENAI, k); } catch (e) { return keyMsg("Couldn't save the key (storage is blocked, e.g. private browsing)."); }
+      showSettings();
+      if (settings.engine !== "whisper") keyMsg(`Key saved on this device. <div class="row" style="margin-top:8px"><button class="btn primary" id="switch-whisper">Switch to OpenAI Whisper now</button><button class="btn" id="keep-builtin">Keep built-in for now</button></div>`, "good");
+      else keyMsg("Key saved on this device.", "good");
+      if ($("#switch-whisper")) { $("#switch-whisper").onclick = () => { settings.engine = "whisper"; applySettings(); showSettings(); keyMsg("Whisper is on. Readings will be checked by OpenAI after you tap Stop.", "good"); }; $("#keep-builtin").onclick = () => keyMsg(""); }
+    };
+    $("#key-test").onclick = async () => {
+      const b = $("#key-test"); b.disabled = true; keyMsg("Testing the key…", "info");
+      const r = await Whisper.testKey(getKey());
+      b.disabled = false; keyMsg(esc(r.message), r.ok ? "good" : "");
+    };
+    $("#key-remove").onclick = () => {
+      if (!confirm("Remove the OpenAI key from this device? The app will go back to the built-in recogniser.")) return;
+      try { localStorage.removeItem(KEY_OPENAI); } catch (e) {}
+      settings.engine = "builtin"; applySettings(); showSettings(); keyMsg("Key removed from this device. (To fully revoke it, delete it on the OpenAI website too.)", "good");
+    };
     $("#fs-dn").onclick = () => { settings.fontSize = Math.max(16, settings.fontSize - 2); applySettings(); showSettings(); };
     $("#fs-up").onclick = () => { settings.fontSize = Math.min(44, settings.fontSize + 2); applySettings(); showSettings(); };
   }
@@ -1277,7 +1564,7 @@ if (typeof module !== "undefined") module.exports = Align;
     navigator.serviceWorker.register("sw.js").catch(() => {});
   }
   // Test hook (used by automated screenshots): ReadingApp.mockAttempt(textId, transcript, seconds)
-  window.ReadingApp = { mockAttempt(textId, transcript, seconds) { const a = createAttempt(byId(textId), transcript, seconds, "speech"); go("#/results/" + a.id); return a.id; }, TEXTS, Align };
+  window.ReadingApp = { mockAttempt(textId, transcript, seconds) { const a = createAttempt(byId(textId), transcript, seconds, "speech", { engine: "builtin", timing: "startstop", recordedSeconds: seconds }); go("#/results/" + a.id); return a.id; }, TEXTS, Align };
 })();
 
 </script>
