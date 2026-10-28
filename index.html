@@ -1,0 +1,1285 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Read Aloud</title>
+<meta name="description" content="Reading practice: read a text aloud and see how you did.">
+<meta name="theme-color" content="#f6f4ef">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Read Aloud">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<style>
+:root{
+  --bg:#f6f4ef; --panel:#ffffff; --ink:#1f2933; --muted:#5f6b76; --line:#e2ddd3;
+  --accent:#2f6f73; --accent-ink:#ffffff; --accent-soft:#dcecec;
+  --ok:#2e7d4f; --ok-soft:#e3f2e8; --sub:#b45309; --sub-soft:#fdecc8; --skip:#9b2c2c; --skip-soft:#f9dede;
+  --extra:#6b46c1; --extra-soft:#ece6fb; --rec:#2563eb; --rec-soft:#dbe7fe; --unreached:#9aa5b1;
+  --reading-size:24px; --reading-font: Georgia, "Iowan Old Style", "Palatino Linotype", "Times New Roman", serif;
+  --reading-spacing:0; --reading-word-spacing:0; --reading-line:1.7;
+  --radius:16px; --shadow:0 1px 2px rgba(0,0,0,.05),0 4px 14px rgba(0,0,0,.05);
+  --tap:52px;
+}
+[data-theme="sepia"]{ --bg:#f4ecd8; --panel:#fbf5e6; --ink:#3b2f20; --muted:#6e5f4a; --line:#e3d6b8; --accent:#7a5a2f; --accent-soft:#efe1c2;}
+[data-theme="dark"]{ --bg:#14181c; --panel:#1d2329; --ink:#e7ecef; --muted:#9aa7b2; --line:#2e3740; --accent:#5fb3b3; --accent-ink:#0b1416; --accent-soft:#21393b;
+  --ok:#6fcf97; --ok-soft:#1d3527; --sub:#f6ad55; --sub-soft:#3f2e14; --skip:#fc8181; --skip-soft:#3d1f1f; --extra:#b794f4; --extra-soft:#2f2645; --rec:#7aa7ff; --rec-soft:#1e2b47; --unreached:#5c6670;}
+[data-dyslexia="1"]{ --reading-font: "OpenDyslexic","Lexend","Atkinson Hyperlegible",Verdana,Tahoma,"Trebuchet MS",sans-serif; --reading-spacing:.04em; --reading-word-spacing:.16em; --reading-line:1.95;}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:17px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;min-height:100vh;padding-bottom:env(safe-area-inset-bottom)}
+button,select,input,textarea{font:inherit;color:inherit}
+button{cursor:pointer;-webkit-tap-highlight-color:transparent}
+a{color:var(--accent)}
+.hidden{display:none!important}
+header.top{position:sticky;top:0;z-index:20;background:var(--bg);border-bottom:1px solid var(--line);padding:calc(env(safe-area-inset-top) + 8px) 16px 8px;display:flex;align-items:center;gap:10px}
+.brand{font-weight:700;font-size:20px;display:flex;align-items:center;gap:8px;margin-right:auto;background:none;border:0;padding:6px 0}
+.brand .logo{width:32px;height:32px;border-radius:9px;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;font-size:18px}
+.nav button{min-height:44px;padding:0 14px;border-radius:999px;border:1px solid transparent;background:none;color:var(--muted);font-weight:600}
+.nav button[aria-current="page"]{background:var(--accent-soft);color:var(--ink)}
+main{max-width:920px;margin:0 auto;padding:16px 16px 140px}
+h1{font-size:26px;margin:8px 0 4px;line-height:1.25}
+h2{font-size:20px;margin:24px 0 10px}
+.muted{color:var(--muted)}
+.small{font-size:14px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px}
+.btn{min-height:var(--tap);padding:0 20px;border-radius:14px;border:1px solid var(--line);background:var(--panel);font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:8px}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.btn.big{min-height:64px;font-size:20px;padding:0 28px;border-radius:18px}
+.btn.danger{color:var(--skip)}
+.btn:disabled{opacity:.5;cursor:default}
+.btn.recording{background:var(--skip);border-color:var(--skip);color:#fff}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0}
+.chip{min-height:44px;padding:0 16px;border-radius:999px;border:1px solid var(--line);background:var(--panel);font-weight:600;color:var(--muted)}
+.chip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.filters label{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:700}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px;margin-top:14px}
+.card{text-align:left;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:8px;min-height:150px}
+.card:active{transform:scale(.99)}
+.card h3{margin:0;font-size:18px;line-height:1.3}
+.card .meta{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:14px;color:var(--muted);margin-top:auto}
+.badge{display:inline-block;padding:2px 10px;border-radius:999px;background:var(--accent-soft);color:var(--ink);font-size:13px;font-weight:600}
+.level{letter-spacing:2px;color:var(--accent);font-size:14px}
+.best{font-size:13px;color:var(--ok);font-weight:600}
+.toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:12px 0}
+.toolbar .btn{min-height:44px;padding:0 14px}
+.reading{font-family:var(--reading-font);font-size:var(--reading-size);line-height:var(--reading-line);letter-spacing:var(--reading-spacing);word-spacing:var(--reading-word-spacing);background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:22px 22px;box-shadow:var(--shadow);max-width:40em}
+.reading p{margin:0 0 1em}
+.reading p:last-child{margin-bottom:0}
+.w{border-radius:6px;padding:0 1px;transition:background .15s}
+.w.speaking{background:var(--accent-soft);box-shadow:0 0 0 2px var(--accent-soft)}
+.source{font-size:14px;color:var(--muted);margin-top:4px}
+.dock{position:fixed;left:0;right:0;bottom:0;z-index:30;background:color-mix(in srgb,var(--bg) 92%,transparent);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-top:1px solid var(--line);padding:12px 16px calc(12px + env(safe-area-inset-bottom))}
+.dock .inner{max-width:920px;margin:0 auto;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.timer{font-variant-numeric:tabular-nums;font-size:22px;font-weight:700;min-width:70px}
+.live{flex:1 1 220px;min-width:0;font-size:15px;color:var(--muted);max-height:3em;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.dot{width:12px;height:12px;border-radius:50%;background:var(--skip);display:inline-block;animation:pulse 1.2s infinite}
+@keyframes pulse{50%{opacity:.25}}
+.notice{border-radius:14px;padding:12px 14px;margin:12px 0;background:var(--sub-soft);border:1px solid color-mix(in srgb,var(--sub) 35%,transparent)}
+.notice.info{background:var(--rec-soft);border-color:color-mix(in srgb,var(--rec) 30%,transparent)}
+.notice.good{background:var(--ok-soft);border-color:color-mix(in srgb,var(--ok) 30%,transparent)}
+textarea{width:100%;min-height:140px;border-radius:12px;border:1px solid var(--line);background:var(--panel);padding:12px;font-size:17px}
+details{margin:14px 0}
+summary{cursor:pointer;font-weight:600;min-height:44px;display:flex;align-items:center}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin:14px 0}
+.stat{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px 14px}
+.stat .v{font-size:28px;font-weight:800;line-height:1.1}
+.stat .l{font-size:13px;color:var(--muted)}
+.cheer{font-size:20px;font-weight:700;margin:10px 0 4px}
+.legend{display:flex;flex-wrap:wrap;gap:8px 14px;font-size:14px;margin:10px 0}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.sw{display:inline-block;width:14px;height:14px;border-radius:4px}
+.r-correct{color:inherit}
+.r-ok-mark{background:var(--ok-soft)}
+.r-sub{background:var(--sub-soft);border-bottom:3px solid var(--sub);cursor:pointer}
+.r-skip{background:var(--skip-soft);color:var(--skip);text-decoration:underline wavy var(--skip);text-underline-offset:5px;cursor:pointer}
+.r-rec{background:var(--rec-soft);border-bottom:3px dotted var(--rec);cursor:pointer}
+.r-unreached{color:var(--unreached)}
+.said{display:inline-block;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;font-size:.55em;line-height:1;vertical-align:super;color:var(--sub);font-weight:700;margin-left:2px;letter-spacing:0;word-spacing:0}
+.extra{display:inline-block;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;font-size:.55em;vertical-align:super;background:var(--extra-soft);color:var(--extra);border-radius:6px;padding:0 4px;margin-right:2px;font-weight:700;letter-spacing:0;word-spacing:0}
+.words{display:flex;flex-wrap:wrap;gap:8px}
+.word{min-height:44px;padding:0 14px;border-radius:12px;border:1px solid var(--line);background:var(--panel);font-size:18px;font-weight:600}
+.word .n{font-size:12px;color:var(--muted);margin-left:6px}
+table{width:100%;border-collapse:collapse;font-size:15px}
+th,td{text-align:left;padding:10px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.chart{width:100%;height:auto;display:block}
+.soon{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
+.soon .panel{opacity:.85}
+.soon h3{margin:0 0 4px;font-size:16px}
+.tag{font-size:12px;font-weight:700;color:var(--extra);background:var(--extra-soft);border-radius:999px;padding:2px 8px;margin-left:6px;vertical-align:middle}
+.setting{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.setting:last-child{border-bottom:0}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.seg button{min-height:44px;padding:0 14px;border:0;background:var(--panel);font-weight:600}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink)}
+.switch{width:58px;height:34px;border-radius:999px;border:0;background:var(--line);position:relative}
+.switch::after{content:"";position:absolute;top:3px;left:3px;width:28px;height:28px;border-radius:50%;background:#fff;transition:left .15s;box-shadow:0 1px 3px rgba(0,0,0,.3)}
+.switch[aria-checked="true"]{background:var(--accent)}
+.switch[aria-checked="true"]::after{left:27px}
+select{min-height:44px;border-radius:12px;border:1px solid var(--line);background:var(--panel);padding:0 10px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.toast{position:fixed;left:50%;bottom:110px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:12px;z-index:50;font-weight:600;max-width:90vw}
+@media (max-width:560px){
+  :root{--reading-size:21px}
+  h1{font-size:22px}
+  .nav button{padding:0 10px}
+  .brand span.t{display:none}
+  .reading{padding:16px}
+  .btn.big{min-height:58px;font-size:18px;padding:0 18px}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+</style>
+</head>
+<body>
+<header class="top">
+  <button class="brand" id="brand" aria-label="Read Aloud home"><span class="logo">📖</span><span class="t">Read Aloud</span></button>
+  <nav class="nav" aria-label="Main">
+    <button id="nav-library">Library</button>
+    <button id="nav-progress">Progress</button>
+    <button id="nav-settings" aria-label="Settings">⚙︎</button>
+  </nav>
+</header>
+<main id="view"><noscript>This app needs JavaScript.</noscript></main>
+<script id="texts-data">
+/* ==== TEXT LIBRARY ====================================================
+   To add a text, copy one object below and change the fields.
+   id:        unique, lowercase, no spaces (used in saved history)
+   title:     shown in the library
+   type:      one of: news, essay, letter, review, excerpt, story, speech, poem
+   level:     1 (easiest) to 5 (hardest)
+   source:    credit line (author, book, year, "Public domain" or "Written for this app")
+   body:      the text. Separate paragraphs with a blank line (\n\n).
+   questions: (optional, for a later phase) [{q:"...", type:"short"|"choice", options:[...], answer:"..."}]
+   keyPoints: (optional, for a later phase) ["...", "..."]
+   ===================================================================== */
+const TEXTS = [
+{
+  id: "news-canal-path", title: "Volunteers Bring Forgotten Canal Path Back to Life",
+  type: "news", level: 1,
+  source: "Written for this app (fictional news report)",
+  body: `A canal path that was lost under brambles for more than thirty years is open again, thanks to a team of local volunteers.
+
+Every Saturday since March, around twenty people have met at the old lock gates with spades, saws and wheelbarrows. They cut back thick hedges, cleared rubbish from the water's edge and laid new gravel along a two-mile stretch of the towpath.
+
+"When we started, you couldn't even see the canal," said Margaret Hill, who organised the group. "Now families are walking here, people are cycling to work, and we've seen kingfishers again."
+
+The youngest volunteer, fourteen-year-old Sam Patel, spent his summer holidays building nest boxes for birds. "I didn't think I'd enjoy it, but it was the best summer I've had," he said. "It's good to look back and see something you actually made."
+
+The local council has promised to repair two broken bridges next spring. The volunteers say their next job is to plant wild flowers along the banks so that bees and butterflies return.
+
+Anyone who would like to help can join the group at the lock gates at nine o'clock on Saturday mornings. Gloves and tea are provided.`,
+  keyPoints: ["Volunteers cleared a canal path lost for thirty years", "The work took place every Saturday since March", "Wildlife such as kingfishers has returned", "Next: bridge repairs and planting wild flowers"],
+  questions: [
+    { q: "How long had the canal path been lost under brambles?", type: "short", answer: "More than thirty years" },
+    { q: "What did Sam Patel build during his summer holidays?", type: "short", answer: "Nest boxes for birds" },
+    { q: "Why do the volunteers want to plant wild flowers?", type: "choice", options: ["To sell them", "So that bees and butterflies return", "To stop people cycling"], answer: "So that bees and butterflies return" }
+  ]
+},
+{
+  id: "news-bus-app", title: "Students Build App to Track Late Buses",
+  type: "news", level: 2,
+  source: "Written for this app (fictional news report)",
+  body: `Three secondary school students who were tired of waiting in the rain have built a phone app that shows exactly where their school bus is.
+
+The idea came last winter, when the bus to their village was late eleven times in a single month. "We'd stand at the stop for forty minutes with no idea whether it was coming," explained sixteen-year-old Priya Desai. "We thought there had to be a better way."
+
+The team taught themselves to code using free online lessons. With permission from the bus company, they fitted a small location tracker to the bus and wrote software that updates a map every thirty seconds. Students can now check their phones and leave home at the right moment.
+
+The app has been downloaded more than four hundred times, and parents say it has made mornings calmer. The bus company is so impressed that it has asked the students to help design a similar system for its other routes.
+
+Their computing teacher, Mr Evans, said the project showed what young people can do when they spot a real problem. "They didn't wait for someone else to fix it," he said. "They made mistakes, learned from them and kept going."
+
+The students now hope to enter their app in a national technology competition next year.`
+},
+{
+  id: "news-storm", title: "Night of the Storm: Coastal Town Counts the Cost",
+  type: "news", level: 3,
+  source: "Written for this app (fictional news report)",
+  body: `Residents of a small coastal town spent yesterday clearing debris after one of the fiercest storms in living memory battered the north coast overnight.
+
+Winds reaching ninety miles an hour tore slates from roofs, uprooted trees and sent waves crashing over the harbour wall. Several fishing boats broke free from their moorings, and one was found this morning lying on its side in the car park of the local supermarket.
+
+Emergency services received more than two hundred calls between midnight and dawn. Firefighters rescued an elderly couple whose cottage had been surrounded by floodwater, while coastguard teams warned people to stay away from the seafront.
+
+"I've lived here for sixty years and I've never seen anything like it," said retired fisherman Tom Gallagher, surveying the damage to his garden. "The sea came right up the street. It sounded like a train going past all night."
+
+Electricity was cut to around three thousand homes, though engineers had restored power to most of them by lunchtime. The town's primary school remained closed while builders inspected its damaged roof.
+
+Despite the destruction, many residents spoke of a strong community spirit. Neighbours shared generators, cafés handed out free soup, and teenagers from the local rugby club spent the afternoon sweeping glass from the pavements.
+
+Forecasters say calmer weather is expected for the rest of the week.`
+},
+{
+  id: "news-satellite", title: "Pupils' Shoebox Satellite Reaches Orbit",
+  type: "news", level: 4,
+  source: "Written for this app (fictional news report)",
+  body: `A satellite no bigger than a shoebox, designed and assembled by pupils at a comprehensive school, is now circling the Earth at an altitude of roughly five hundred kilometres.
+
+The tiny spacecraft, known as a CubeSat, was carried into space last week aboard a commercial rocket alongside dozens of other small payloads. Within hours of separation, the students' ground station, built from a second-hand radio and an aerial bolted to the school's chimney, picked up its first faint signal.
+
+"There was absolute silence, and then this little beep came through the speaker," recalled seventeen-year-old Hannah Okafor, the team's lead engineer. "Everyone just screamed. Two years of work, and it actually functioned."
+
+The satellite carries a miniature camera and a set of sensors that measure temperature and radiation. The data will be shared with universities studying how electronic components cope with the harsh environment of space.
+
+The project was not without setbacks. An early prototype failed a vibration test so badly that its circuit boards cracked, forcing the team to redesign the internal frame entirely. Their physics teacher described the failure as "the most valuable lesson of the whole project".
+
+Experts say educational satellites are becoming increasingly common as launch costs fall. Nevertheless, few school teams succeed in getting hardware into orbit, and fewer still receive a signal on their first attempt.`
+},
+{
+  id: "essay-boredom", title: "In Praise of Boredom",
+  type: "essay", level: 3,
+  source: "Written for this app (short essay)",
+  body: `Most of us will do almost anything to avoid being bored. We reach for our phones in queues, play music on short walks and scroll through videos while waiting for the kettle to boil. Yet boredom may be far more useful than we think.
+
+When the mind has nothing to hold on to, it begins to wander. It replays conversations, notices small details and makes unexpected connections. Many writers, scientists and inventors have described their best ideas arriving not at their desks, but while they were walking, washing up or staring out of a train window.
+
+Boredom is also a signal. Like hunger, it tells us that something is missing. If we always fill that gap instantly with entertainment, we never learn what we actually want to do. A bored afternoon might be the push someone needs to pick up a guitar, start a story or build something in the shed.
+
+Of course, not all boredom is helpful. Hours of dull, repetitive work can drain anyone's energy. But the gentle boredom of an empty afternoon is different. It gives us room to think.
+
+So the next time you feel bored, try waiting a few minutes before reaching for a screen. Let your thoughts drift. You may be surprised by where they take you.`
+},
+{
+  id: "essay-cooking", title: "Why Every Teenager Should Learn to Cook",
+  type: "essay", level: 2,
+  source: "Written for this app (short essay)",
+  body: `Learning to cook is one of the most useful skills a young person can have, and it is much easier than many people imagine.
+
+The first reason is independence. Anyone who can make a simple meal from basic ingredients will never be completely stuck. They will not need to rely on takeaways or ready meals, and they will be able to look after themselves when they leave home.
+
+The second reason is health. When you cook for yourself, you know exactly what is going into your food. You can choose fresh vegetables, control how much salt and sugar you use, and avoid the hidden extras found in many processed meals.
+
+Cooking also saves money. A large pot of soup or chilli costs very little to make and can feed a family for two days. Compared with buying lunch every day, the savings soon add up.
+
+Finally, cooking is creative. A recipe is really just a starting point. Once you understand the basics, you can experiment with spices, swap ingredients and invent dishes of your own. Cooking for other people is also a way of showing that you care about them.
+
+Start small. Learn to make scrambled eggs, a good pasta sauce and a simple curry. Before long, you may find that the kitchen becomes one of your favourite places.`
+},
+{
+  id: "essay-mistakes", title: "What Mistakes Are For",
+  type: "essay", level: 4,
+  source: "Written for this app (short essay)",
+  body: `Few experiences are as uncomfortable as getting something wrong in front of other people. Our cheeks burn, we replay the moment for hours afterwards, and we quietly resolve never to take such a risk again. Yet a life organised around avoiding mistakes is, in an important sense, a life in which very little is learned.
+
+Consider how a child learns to walk. No toddler studies the theory of balance before standing up. Instead, they fall over hundreds of times, and each fall adjusts their sense of where their weight should be. The mistakes are not interruptions to the learning; they are the learning.
+
+The same principle applies to more complicated skills. A musician discovers what a difficult passage requires precisely by playing it badly. A scientist designs an experiment knowing it may disprove her favourite idea. Even professional athletes review recordings of their poorest performances, because errors reveal exactly where improvement is possible.
+
+This does not mean that mistakes are pleasant or that carelessness should be celebrated. A thoughtless error and a brave attempt that falls short are entirely different things. The first deserves correction; the second deserves respect.
+
+Perhaps the most useful question after a mistake is not "How embarrassing was that?" but "What exactly went wrong, and what will I try next time?" Asked honestly, that question turns failure into information, and information into progress.`
+},
+{
+  id: "letter-bixby", title: "Letter to Mrs Bixby",
+  type: "letter", level: 5,
+  source: "Abraham Lincoln, letter of 21 November 1864, as printed in the Boston Evening Transcript. Public domain.",
+  body: `Dear Madam,
+
+I have been shown in the files of the War Department a statement of the Adjutant General of Massachusetts that you are the mother of five sons who have died gloriously on the field of battle.
+
+I feel how weak and fruitless must be any word of mine which should attempt to beguile you from the grief of a loss so overwhelming. But I cannot refrain from tendering you the consolation that may be found in the thanks of the Republic they died to save.
+
+I pray that our Heavenly Father may assuage the anguish of your bereavement, and leave you only the cherished memory of the loved and lost, and the solemn pride that must be yours to have laid so costly a sacrifice upon the altar of freedom.
+
+Yours, very sincerely and respectfully,
+
+A. Lincoln`
+},
+{
+  id: "letter-grandad", title: "A Letter from Grandad",
+  type: "letter", level: 1,
+  source: "Written for this app (fictional letter)",
+  body: `Dear Jack,
+
+Thank you for your letter and for the photograph of the bird table you made. Your grandmother has put it on the fridge, and she shows it to everyone who comes to the house.
+
+The garden here is very busy this week. The apple tree has more fruit than ever, so I have been picking apples every morning before breakfast. We have made six jars of apple jam and two apple pies. I will save a jar for you when you visit.
+
+Last Tuesday I went fishing at the lake with my old friend Bill. We sat there for four hours and caught nothing at all, but we had a good chat and a flask of hot tea, so it was still a fine day.
+
+I hope your reading is going well. When I was your age, I liked adventure stories best, especially books about sailors and pirates. If you find a good one, tell me the name and I will read it too. Then we can talk about it on the phone.
+
+Please give my love to your mum and dad. Remember to keep filling up that bird table. The birds will soon know your garden is the best café in town.
+
+With love from
+Grandad`
+},
+{
+  id: "letter-council", title: "A Letter to the Council",
+  type: "letter", level: 3,
+  source: "Written for this app (fictional formal letter)",
+  body: `Dear Councillor Morgan,
+
+I am writing on behalf of the young people who use the skate park on Riverside Road. We would like to draw your attention to its condition and to suggest some improvements.
+
+At present, two of the ramps are cracked and one rail has come loose, which makes them dangerous to use. After dark there is no lighting at all, so the park can only be used safely for a few hours in winter. Many of us have also noticed broken glass near the entrance on several occasions.
+
+The skate park is important to our community. It gives teenagers a free, healthy place to meet friends and practise a sport we love. Without it, many of us would have nowhere to go after school.
+
+We have three suggestions. First, the damaged ramps and rail should be repaired before someone is injured. Second, solar-powered lights could be installed so the park can be used in the early evening. Third, an extra bin near the gate would help to keep the area clean.
+
+We would be happy to help in any way we can, for example by organising a litter-picking day or raising money through a sponsored skate.
+
+Thank you for taking the time to read this letter. We look forward to hearing from you.
+
+Yours sincerely,
+
+Daniel Reid`
+},
+{
+  id: "review-treasure-island", title: "Book Review: Treasure Island",
+  type: "review", level: 3,
+  source: "Written for this app (book review)",
+  body: `Robert Louis Stevenson's Treasure Island was first published more than a hundred and forty years ago, but it still feels as exciting as any modern adventure story.
+
+The novel is narrated by Jim Hawkins, a boy whose mother runs an inn on the English coast. When a mysterious old sailor dies there, Jim discovers a map showing where the pirate Captain Flint buried his treasure. Before long, Jim is sailing for a distant island with a crew that includes the charming, one-legged cook, Long John Silver.
+
+Silver is the best thing about the book. He is friendly, clever and funny, yet he is also dangerous, and the reader is never quite sure which side he is on. Stevenson makes us like him even when we know we should not trust him.
+
+The story moves quickly, with mutiny, sword fights, hidden caves and a dramatic escape at sea. Some of the old-fashioned language and sailing words can be tricky at first, but they soon become part of the fun.
+
+My only criticism is that there are very few female characters, which reflects the time when it was written.
+
+Overall, Treasure Island is a gripping, clever adventure that deserves its reputation as a classic. I would recommend it to anyone aged twelve and over. Rating: four and a half stars out of five.`
+},
+{
+  id: "review-museum", title: "Review: The Science Museum Flight Gallery",
+  type: "review", level: 2,
+  source: "Written for this app (fictional visit review)",
+  body: `If you have ever wondered how a plane stays in the air, the new flight gallery is well worth a visit.
+
+The gallery is in a huge, bright hall, with real aircraft hanging from the ceiling. There is a tiny wooden glider from the early days of flying, a fighter plane from the Second World War and even part of a modern passenger jet that you can walk through.
+
+The best part is the hands-on zone. Visitors can test paper wings in a wind tunnel, try a simple flight simulator and use a large touch screen to design their own aircraft. My younger sister spent twenty minutes building a plane that looked like a banana. It did not fly very well, but she loved it.
+
+The information boards are short and clear, and the staff were friendly and happy to answer questions. One guide showed us how a jet engine works using a hair dryer and a model fan.
+
+There are a few downsides. The gallery was very crowded at the weekend, and we had to queue for almost half an hour to use the simulator. The café was also expensive.
+
+Overall, I would give the flight gallery four stars out of five. Go on a weekday if you can, and bring your own lunch.`
+},
+{
+  id: "excerpt-two-cities", title: "A Tale of Two Cities (opening)",
+  type: "excerpt", level: 5,
+  source: "Charles Dickens, A Tale of Two Cities (1859), Book 1, Chapter 1. Public domain, via Project Gutenberg.",
+  body: `It was the best of times, it was the worst of times, it was the age of wisdom, it was the age of foolishness, it was the epoch of belief, it was the epoch of incredulity, it was the season of Light, it was the season of Darkness, it was the spring of hope, it was the winter of despair, we had everything before us, we had nothing before us, we were all going direct to Heaven, we were all going direct the other way—in short, the period was so far like the present period, that some of its noisiest authorities insisted on its being received, for good or for evil, in the superlative degree of comparison only.
+
+There were a king with a large jaw and a queen with a plain face, on the throne of England; there were a king with a large jaw and a queen with a fair face, on the throne of France. In both countries it was clearer than crystal to the lords of the State preserves of loaves and fishes, that things in general were settled for ever.`
+},
+{
+  id: "excerpt-pride-prejudice", title: "Pride and Prejudice (opening)",
+  type: "excerpt", level: 4,
+  source: "Jane Austen, Pride and Prejudice (1813), Chapter 1. Public domain, via Project Gutenberg.",
+  body: `It is a truth universally acknowledged, that a single man in possession of a good fortune must be in want of a wife.
+
+However little known the feelings or views of such a man may be on his first entering a neighbourhood, this truth is so well fixed in the minds of the surrounding families, that he is considered as the rightful property of some one or other of their daughters.
+
+"My dear Mr. Bennet," said his lady to him one day, "have you heard that Netherfield Park is let at last?"
+
+Mr. Bennet replied that he had not.
+
+"But it is," returned she; "for Mrs. Long has just been here, and she told me all about it."
+
+Mr. Bennet made no answer.
+
+"Do not you want to know who has taken it?" cried his wife, impatiently.
+
+"You want to tell me, and I have no objection to hearing it."`
+},
+{
+  id: "excerpt-study-scarlet", title: "A Study in Scarlet: Meeting Sherlock Holmes",
+  type: "excerpt", level: 3,
+  source: "Arthur Conan Doyle, A Study in Scarlet (1887), Part 1, Chapter 1. Public domain, via Project Gutenberg (spelling of “hæmoglobin” modernised).",
+  body: `This was a lofty chamber, lined and littered with countless bottles. Broad, low tables were scattered about, which bristled with retorts, test-tubes, and little Bunsen lamps, with their blue flickering flames. There was only one student in the room, who was bending over a distant table absorbed in his work. At the sound of our steps he glanced round and sprang to his feet with a cry of pleasure. "I've found it! I've found it," he shouted to my companion, running towards us with a test-tube in his hand. "I have found a re-agent which is precipitated by haemoglobin, and by nothing else." Had he discovered a gold mine, greater delight could not have shone upon his features.
+
+"Dr. Watson, Mr. Sherlock Holmes," said Stamford, introducing us.
+
+"How are you?" he said cordially, gripping my hand with a strength for which I should hardly have given him credit. "You have been in Afghanistan, I perceive."
+
+"How on earth did you know that?" I asked in astonishment.`
+},
+{
+  id: "excerpt-call-wild", title: "The Call of the Wild (opening)",
+  type: "excerpt", level: 3,
+  source: "Jack London, The Call of the Wild (1903), Chapter 1. Public domain, via Project Gutenberg.",
+  body: `Buck did not read the newspapers, or he would have known that trouble was brewing, not alone for himself, but for every tide-water dog, strong of muscle and with warm, long hair, from Puget Sound to San Diego. Because men, groping in the Arctic darkness, had found a yellow metal, and because steamship and transportation companies were booming the find, thousands of men were rushing into the Northland. These men wanted dogs, and the dogs they wanted were heavy dogs, with strong muscles by which to toil, and furry coats to protect them from the frost.
+
+Buck lived at a big house in the sun-kissed Santa Clara Valley. Judge Miller's place, it was called. It stood back from the road, half hidden among the trees, through which glimpses could be caught of the wide cool veranda that ran around its four sides. The house was approached by gravelled driveways which wound about through wide-spreading lawns and under the interlacing boughs of tall poplars.`
+},
+{
+  id: "excerpt-treasure-island", title: "Treasure Island: The Old Sea-Dog",
+  type: "excerpt", level: 4,
+  source: "Robert Louis Stevenson, Treasure Island (1883), Chapter 1. Public domain, via Project Gutenberg.",
+  body: `Squire Trelawney, Dr. Livesey, and the rest of these gentlemen having asked me to write down the whole particulars about Treasure Island, from the beginning to the end, keeping nothing back but the bearings of the island, and that only because there is still treasure not yet lifted, I take up my pen in the year of grace 17—, and go back to the time when my father kept the Admiral Benbow inn and the brown old seaman with the sabre cut first took up his lodging under our roof.
+
+I remember him as if it were yesterday, as he came plodding to the inn door, his sea-chest following behind him in a hand-barrow—a tall, strong, heavy, nut-brown man, his tarry pigtail falling over the shoulder of his soiled blue coat, his hands ragged and scarred, with black, broken nails, and the sabre cut across one cheek, a dirty, livid white. I remember him looking round the cove and whistling to himself as he did so.`
+},
+{
+  id: "story-last-ferry", title: "The Last Ferry",
+  type: "story", level: 2,
+  source: "Written for this app (short story)",
+  body: `Leo ran down the hill so fast that his bag bounced against his back. Below him, the harbour lights were coming on one by one, and the little blue ferry was already rumbling at the pier.
+
+"Wait!" he shouted, but the wind snatched the word away.
+
+It was the last ferry of the day. If he missed it, he would be stuck on the island until morning, and his mum would be worried sick. His phone had died an hour ago, so he could not even call her.
+
+He reached the bottom of the hill just as the ferryman began to untie the rope. Leo waved both arms. The ferryman looked up, frowned, and then slowly tied the rope back around the post.
+
+"Cutting it a bit fine, aren't you?" he said, as Leo climbed aboard, red-faced and gasping.
+
+"Sorry," Leo panted. "I lost track of time. I was watching the seals on the rocks."
+
+The ferryman's frown turned into a grin. "Seals, was it? Then I'll forgive you. I've been watching those seals for thirty years, and I still lose track of time."
+
+As the ferry pulled away, Leo leaned on the rail and watched the island grow smaller in the dark. Somewhere out on the rocks, a seal barked, as if to say goodbye.`
+},
+{
+  id: "story-signal-hill", title: "The Signal on the Hill",
+  type: "story", level: 3,
+  source: "Written for this app (short story)",
+  body: `Nobody in the village could explain the light on Carrick Hill.
+
+It appeared every night at exactly ten o'clock: three short flashes, three long ones, then three short flashes again. Most people assumed it was a farmer with a torch, or teenagers playing a joke. But Ellie, who had spent the winter reading her grandfather's old books about ships, recognised the pattern at once. It was Morse code for SOS.
+
+On Friday night she pulled on her boots, took her bicycle lamp and climbed the steep path towards the summit. The heather was wet and the wind tugged at her coat. Halfway up, the flashing stopped, and for a horrible moment she thought she had imagined it.
+
+Then she saw the shape of a stone hut, and a thin line of light under its door.
+
+Inside, sitting on a camp bed with his leg in a homemade splint, was an elderly man surrounded by maps and radio parts. He looked astonished to see her.
+
+"I'm a birdwatcher," he explained weakly. "I slipped on the rocks three days ago. My radio's broken, so I've been signalling with my torch. I was beginning to think nobody knew Morse code any more."
+
+Ellie smiled, switched on her lamp and pointed it down towards the village. Then, carefully, she began to flash a reply.`
+},
+{
+  id: "speech-gettysburg", title: "The Gettysburg Address",
+  type: "speech", level: 5,
+  source: "Abraham Lincoln, speech at Gettysburg, 19 November 1863 (the 'Bliss copy'). Public domain.",
+  body: `Four score and seven years ago our fathers brought forth on this continent, a new nation, conceived in Liberty, and dedicated to the proposition that all men are created equal.
+
+Now we are engaged in a great civil war, testing whether that nation, or any nation so conceived and so dedicated, can long endure. We are met on a great battle-field of that war. We have come to dedicate a portion of that field, as a final resting place for those who here gave their lives that that nation might live. It is altogether fitting and proper that we should do this.
+
+But, in a larger sense, we can not dedicate—we can not consecrate—we can not hallow—this ground. The brave men, living and dead, who struggled here, have consecrated it, far above our poor power to add or detract. The world will little note, nor long remember what we say here, but it can never forget what they did here. It is for us the living, rather, to be dedicated here to the unfinished work which they who fought here have thus far so nobly advanced. It is rather for us to be here dedicated to the great task remaining before us—that from these honored dead we take increased devotion to that cause for which they gave the last full measure of devotion—that we here highly resolve that these dead shall not have died in vain—that this nation, under God, shall have a new birth of freedom—and that government of the people, by the people, for the people, shall not perish from the earth.`
+},
+{
+  id: "poem-if", title: "If—",
+  type: "poem", level: 4,
+  source: "Rudyard Kipling, 'If—', from Rewards and Fairies (1910). Public domain, via Project Gutenberg.",
+  body: `If you can keep your head when all about you
+Are losing theirs and blaming it on you;
+If you can trust yourself when all men doubt you,
+But make allowance for their doubting too;
+If you can wait and not be tired by waiting,
+Or being lied about, don't deal in lies,
+Or being hated, don't give way to hating,
+And yet don't look too good, nor talk too wise;
+
+If you can dream—and not make dreams your master;
+If you can think—and not make thoughts your aim,
+If you can meet with Triumph and Disaster
+And treat those two impostors just the same;
+If you can bear to hear the truth you've spoken
+Twisted by knaves to make a trap for fools,
+Or watch the things you gave your life to, broken,
+And stoop and build 'em up with worn-out tools;
+
+If you can make one heap of all your winnings
+And risk it on one turn of pitch-and-toss,
+And lose, and start again at your beginnings
+And never breathe a word about your loss;
+If you can force your heart and nerve and sinew
+To serve your turn long after they are gone,
+And so hold on when there is nothing in you
+Except the Will which says to them: 'Hold on!'
+
+If you can talk with crowds and keep your virtue,
+Or walk with Kings—nor lose the common touch,
+If neither foes nor loving friends can hurt you,
+If all men count with you, but none too much;
+If you can fill the unforgiving minute
+With sixty seconds' worth of distance run,
+Yours is the Earth and everything that's in it,
+And—which is more—you'll be a Man, my son!`
+}
+];
+
+</script>
+<script id="align-lib">
+/* ==== ALIGNMENT LIBRARY (pure functions, unit-tested in tests/align.test.js) ==== */
+const Align = (function () {
+  const ONES = ["zero","one","two","three","four","five","six","seven","eight","nine","ten","eleven","twelve","thirteen","fourteen","fifteen","sixteen","seventeen","eighteen","nineteen"];
+  const TENS = ["","","twenty","thirty","forty","fifty","sixty","seventy","eighty","ninety"];
+  function under1000(n) {
+    const out = [];
+    if (n >= 100) { out.push(ONES[Math.floor(n / 100)], "hundred"); n %= 100; if (n) out.push("and"); }
+    if (n >= 20) { out.push(TENS[Math.floor(n / 10)]); n %= 10; if (n) out.push(ONES[n]); }
+    else if (n > 0 || out.length === 0) out.push(ONES[n]);
+    return out;
+  }
+  // Integer -> array of English words (British "and"). Handles up to 999,999,999.
+  function numberToWords(n) {
+    if (n === 0) return ["zero"];
+    const out = [];
+    const m = Math.floor(n / 1e6), t = Math.floor((n % 1e6) / 1000), r = n % 1000;
+    if (m) out.push(...under1000(m), "million");
+    if (t) out.push(...under1000(t), "thousand");
+    if (r) { if ((m || t) && r < 100) out.push("and"); out.push(...under1000(r)); }
+    return out;
+  }
+  // Alternative "year" reading for 4-digit numbers 1100-2099, e.g. 1863 -> eighteen sixty three
+  function yearWords(n) {
+    if (n < 1100 || n > 2099 || (n >= 2000 && n < 2010)) return null;
+    const hi = Math.floor(n / 100), lo = n % 100;
+    const a = under1000(hi);
+    if (lo === 0) return a.concat(["hundred"]);
+    if (lo < 10) return a.concat(["oh", ONES[lo]]);
+    return a.concat(under1000(lo));
+  }
+  const ORD = { first:1, second:2, third:3 };
+
+  // Homophones / recogniser-equivalent words. Words in the same group count as a match,
+  // because they sound the same and the recogniser often picks the "wrong" spelling.
+  const HOMOPHONE_GROUPS = [
+    ["there","their","theyre"],["to","too","two"],["for","four","fore"],["your","youre"],["its","its"],
+    ["where","wear","ware"],["here","hear"],["know","no"],["knew","new"],["right","write","rite"],
+    ["by","buy","bye"],["see","sea"],["one","won"],["eight","ate"],["whether","weather"],["whose","whos"],
+    ["through","threw"],["piece","peace"],["break","brake"],["great","grate"],["made","maid"],["road","rode"],
+    ["sun","son"],["tail","tale"],["which","witch"],["hole","whole"],["our","hour"],["morning","mourning"],
+    ["allowed","aloud"],["passed","past"],["weak","week"],["would","wood"],["red","read"],["led","lead"],
+    ["mr","mister"],["mrs","missus","misses"],["dr","doctor"],["ok","okay"],["till","until"],["oh","o"],
+    ["cannot","can't","cant"],["grey","gray"],["mum","mom"],["towards","toward"],["round","around"],
+    ["percent","per"],["and","&"],["honoured","honored"]
+  ];
+  const HOMO = new Map();
+  HOMOPHONE_GROUPS.forEach((g, i) => g.forEach(w => HOMO.set(w.replace(/'/g, ""), i)));
+
+  // Make a comparison key: lower case, straight apostrophes removed, accents removed, letters/digits only.
+  function key(w) {
+    return w.toLowerCase()
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+      .replace(/æ/g, "ae").replace(/œ/g, "oe")
+      .replace(/[’‘'`]/g, "")
+      .replace(/[^a-z0-9]/g, "");
+  }
+  // British/American spelling canonicalisation (applied to both sides, so it only affects equality).
+  function canon(k) {
+    if (HOMO.has(k)) return "#h" + HOMO.get(k);
+    let c = k;
+    if (c.length > 4) c = c.replace(/our(s|ed|ing|ite|ites|able|ably|er|ers|hood|hoods)?$/, "or$1").replace(/ourit/, "orit");
+    if (c.length > 5) c = c.replace(/is(e|ed|es|ing|ation|ations)$/, "iz$1").replace(/ys(e|ed|ing)$/, "yz$1");
+    if (c.length > 4) c = c.replace(/tre(s)?$/, "ter$1");
+    if (c.length > 5) c = c.replace(/ll(ed|ing|er|ers)$/, "l$1");
+    c = c.replace(/ae/g, "e");
+    return c;
+  }
+  function same(a, b) { return a === b || canon(a) === canon(b); }
+
+  // Split raw text into display tokens; each token has .display (original text incl. punctuation)
+  // and .parts (comparison keys). Hyphenated words are split into parts; numbers are expanded.
+  function tokenize(text) {
+    const tokens = [];
+    const raw = String(text).replace(/[—–]|--/g, " — ").split(/\s+/).filter(Boolean);
+    for (const r of raw) {
+      const parts = keysFor(r);
+      const tok = { display: r, parts };
+      const ym = r.match(/^[^0-9]*([0-9]{4})[^0-9]*$/);
+      if (ym) { const y = yearWords(parseInt(ym[1], 10)); if (y) tok.alt = y; }
+      tokens.push(tok);
+    }
+    return tokens;
+  }
+  function keysFor(r) {
+    let s = r.replace(/[“”"«»()\[\]{}…]/g, " ");
+    // currency / percent
+    let suffix = [];
+    if (/^[£$€]/.test(s.trim())) { suffix.push(s.trim()[0] === "£" ? "pounds" : s.trim()[0] === "$" ? "dollars" : "euros"); s = s.replace(/[£$€]/, ""); }
+    if (/%/.test(s)) { suffix.push("percent"); s = s.replace(/%/g, ""); }
+    if (/&/.test(s)) s = s.replace(/&/g, " and ");
+    const out = [];
+    for (const piece of s.split(/[-\/\s]+/)) {
+      const m = piece.match(/^[^0-9A-Za-zÀ-ÿ]*([0-9][0-9,]*)(st|nd|rd|th)?[^0-9A-Za-z]*$/i);
+      if (m) {
+        const n = parseInt(m[1].replace(/,/g, ""), 10);
+        if (!isNaN(n) && n < 1e9) {
+          let w = numberToWords(n);
+          if (m[2]) w = ordinalise(w);
+          out.push(...w);
+          continue;
+        }
+      }
+      const k = key(piece);
+      if (k) out.push(k);
+    }
+    return out.concat(suffix);
+  }
+  function ordinalise(words) {
+    const last = words[words.length - 1];
+    const map = { one:"first", two:"second", three:"third", five:"fifth", eight:"eighth", nine:"ninth", twelve:"twelfth" };
+    let o = map[last] || (last.endsWith("y") ? last.slice(0, -1) + "ieth" : last + "th");
+    return words.slice(0, -1).concat([o]);
+  }
+
+  // Transcript -> flat list of word keys, with number expansion.
+  // 4-digit years are expanded as "eighteen sixty three" if the original reads that way (handled in align by alt forms).
+  function transcriptWords(transcript) {
+    const out = [];
+    for (const r of String(transcript).replace(/[—–]|--/g, " ").split(/\s+/).filter(Boolean)) {
+      const raw = r.replace(/[“”"«»()\[\]{}…,.;:!?]+$/g, "").replace(/^[“”"«»()\[\]{}…]+/, "");
+      const m = raw.match(/^([0-9][0-9,]*)$/);
+      if (m) {
+        const n = parseInt(m[1].replace(/,/g, ""), 10);
+        const alts = [numberToWords(n)];
+        const y = yearWords(n); if (y) alts.push(y);
+        out.push({ said: raw, keys: null, alts });
+        continue;
+      }
+      for (const k of keysFor(raw)) out.push({ said: k, keys: [k] });
+    }
+    return out;
+  }
+
+  // Character-level edit distance (for partial-similarity substitution costs)
+  function lev(a, b) {
+    if (a === b) return 0;
+    const m = a.length, n = b.length;
+    if (!m) return n; if (!n) return m;
+    let prev = new Array(n + 1), cur = new Array(n + 1);
+    for (let j = 0; j <= n; j++) prev[j] = j;
+    for (let i = 1; i <= m; i++) {
+      cur[0] = i;
+      for (let j = 1; j <= n; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+      [prev, cur] = [cur, prev];
+    }
+    return prev[n];
+  }
+
+  // Resolve transcript numerals: choose the expansion that best fits the original sequence, then flatten.
+  function flattenTranscript(tw, origKeys) {
+    const flat = [];
+    const origStr = " " + origKeys.join(" ") + " ";
+    for (const t of tw) {
+      if (t.keys) { flat.push({ k: t.keys[0], said: t.said }); continue; }
+      let best = t.alts[0];
+      for (const a of t.alts) if (origStr.includes(" " + a.join(" ") + " ")) { best = a; break; }
+      // also allow the original to omit "and" (American style)
+      if (!origStr.includes(" " + best.join(" ") + " ")) {
+        const noAnd = best.filter(w => w !== "and");
+        if (origStr.includes(" " + noAnd.join(" ") + " ")) best = noAnd;
+      }
+      best.forEach((w, i) => flat.push({ k: w, said: i === 0 ? t.said : "", numberPart: true }));
+    }
+    // merge split compounds: if orig has "seachest"?? (we split hyphens, so instead split transcript compounds)
+    const origSet = new Set(origKeys);
+    const res = [];
+    // join compounds the recogniser split: "wheel barrows" -> "wheelbarrows" when only the joined form is in the text
+    for (let q = 0; q + 1 < flat.length; q++) {
+      const a = flat[q], b = flat[q + 1], jn = a.k + b.k;
+      if (!a.numberPart && !b.numberPart && origSet.has(jn) && !(origSet.has(a.k) && origSet.has(b.k))) { flat.splice(q, 2, { k: jn, said: a.said + " " + b.said }); }
+    }
+    for (const f of flat) {
+      if (!origSet.has(f.k) && f.k.length > 5) {
+        // try splitting into two words that both appear consecutively in the original
+        let split = null;
+        for (let i = 2; i <= f.k.length - 2 && !split; i++) {
+          const a = f.k.slice(0, i), b = f.k.slice(i);
+          if (origStr.includes(" " + a + " " + b + " ")) split = [a, b];
+        }
+        if (split) { res.push({ k: split[0], said: f.k }, { k: split[1], said: "" , joined: true}); continue; }
+      }
+      res.push(f);
+    }
+    return res;
+  }
+
+  const COST = { del: 1, ins: 1 };
+  function subCost(a, b) {
+    if (same(a, b)) return 0;
+    const d = lev(canon(a), canon(b)) / Math.max(a.length, b.length, 1);
+    return 0.6 + 0.4 * Math.min(1, d); // similar words pair up more readily than unrelated ones
+  }
+
+  /**
+   * align(originalText, transcript) -> {
+   *   tokens: [{display, parts:[{k, status:'correct'|'sub'|'skip'|'unreached', said}] , status, said, before:[extra words]}],
+   *   ops: flat word-level ops,
+   * }
+   */
+  function align(originalText, transcript) {
+    const tokens = tokenize(originalText);
+    // If a year written in digits was read as a year ("eighteen sixty three"), use that reading.
+    const hypStr = " " + transcriptWords(transcript).map(w => w.keys ? w.keys[0] : w.alts[0].join(" ")).join(" ") + " ";
+    for (const t of tokens) if (t.alt && hypStr.includes(" " + t.alt.join(" ") + " ")) t.parts = t.alt;
+    const orig = []; // flat word list
+    tokens.forEach((t, ti) => t.parts.forEach((k, pi) => orig.push({ k, ti, pi })));
+    const origKeys = orig.map(o => o.k);
+    const hyp = flattenTranscript(transcriptWords(transcript), origKeys);
+    const n = orig.length, m = hyp.length;
+    // DP matrix (Needleman-Wunsch / Levenshtein with weighted substitutions)
+    const D = new Array(n + 1);
+    for (let i = 0; i <= n; i++) { D[i] = new Float64Array(m + 1); D[i][0] = i * COST.del; }
+    for (let j = 0; j <= m; j++) D[0][j] = j * COST.ins;
+    for (let i = 1; i <= n; i++) for (let j = 1; j <= m; j++) {
+      D[i][j] = Math.min(
+        D[i - 1][j - 1] + subCost(orig[i - 1].k, hyp[j - 1].k),
+        D[i - 1][j] + COST.del,
+        D[i][j - 1] + COST.ins);
+    }
+    // Semi-global: stopping early is cheap. Pick the end point in the original with the lowest cost
+    // (ties -> the furthest point), so a partial reading isn't forced to stretch across the whole text.
+    // Each "not reached" word costs half a skip, so a genuinely skipped middle section is still reported as skipped.
+    const UNREACHED = 0.5;
+    let iEnd = n;
+    if (m > 0) { for (let i2 = n; i2 >= 0; i2--) if (D[i2][m] + UNREACHED * (n - i2) < D[iEnd][m] + UNREACHED * (n - iEnd) - 1e-9) iEnd = i2; }
+    // Backtrace (prefer match/sub, then deletion, then insertion)
+    const ops = [];
+    for (let k = n; k > iEnd; k--) ops.push({ type: "skip", o: k - 1 });
+    let i = iEnd, j = m;
+    const EPS = 1e-9;
+    while (i > 0 || j > 0) {
+      if (i > 0 && j > 0 && Math.abs(D[i][j] - (D[i - 1][j - 1] + subCost(orig[i - 1].k, hyp[j - 1].k))) < EPS) {
+        const ok = same(orig[i - 1].k, hyp[j - 1].k);
+        ops.push({ type: ok ? "correct" : "sub", o: i - 1, h: j - 1 }); i--; j--;
+      } else if (i > 0 && Math.abs(D[i][j] - (D[i - 1][j] + COST.del)) < EPS) {
+        ops.push({ type: "skip", o: i - 1 }); i--;
+      } else {
+        ops.push({ type: "extra", h: j - 1 }); j--;
+      }
+    }
+    ops.reverse();
+    // Words after the last spoken match are "not reached" (he stopped early) rather than skipped.
+    let lastHit = -1;
+    ops.forEach((op, idx) => { if (op.type === "correct" || op.type === "sub") lastHit = idx; });
+    for (let idx = lastHit + 1; idx < ops.length; idx++) if (ops[idx].type === "skip") ops[idx].type = "unreached";
+    // Leading skips before the first match when the transcript started late are still skips (he may have missed the start).
+
+    // Project onto display tokens
+    const out = tokens.map(t => ({ display: t.display, parts: t.parts.map(k => ({ k, status: null, said: "" })), before: [] }));
+    let pendingExtra = [];
+    for (const op of ops) {
+      if (op.type === "extra") { const h = hyp[op.h]; if (!h.joined) pendingExtra.push(h.said || h.k); continue; }
+      const o = orig[op.o];
+      const part = out[o.ti].parts[o.pi];
+      part.status = op.type;
+      if (op.type === "sub") part.said = hyp[op.h].said || hyp[op.h].k;
+      if (pendingExtra.length) { out[o.ti].before.push(...pendingExtra); pendingExtra = []; }
+    }
+    const trailingExtra = pendingExtra;
+    // Token-level status: worst of its parts
+    const rank = { correct: 0, unreached: 1, sub: 3, skip: 2 };
+    for (const t of out) {
+      if (!t.parts.length) { t.status = "punct"; continue; }
+      let st = "correct";
+      for (const p of t.parts) if (rank[p.status] > rank[st]) st = p.status;
+      t.status = st;
+      t.said = t.parts.filter(p => p.status === "sub").map(p => p.said).join(" ");
+    }
+    return { tokens: out, trailingExtra, ops, origCount: n, hypCount: m };
+  }
+
+  // Compute scores from aligned tokens + set of token indexes overridden as "recogniser error".
+  function score(result, overrides, seconds) {
+    const ov = new Set(overrides || []);
+    let total = 0, correct = 0, sub = 0, skip = 0, unreached = 0, extra = 0;
+    const tricky = [];
+    result.tokens.forEach((t, idx) => {
+      if (t.status === "punct") return;
+      extra += t.before.length;
+      const w = t.parts.length;
+      if (t.status === "unreached") { unreached += w; return; }
+      total += w;
+      if (t.status === "correct" || ov.has(idx)) { correct += w; return; }
+      if (t.status === "sub") sub += w; else skip += w;
+      tricky.push(cleanWord(t.display));
+    });
+    extra += result.trailingExtra.length;
+    const attempted = total;
+    const accuracy = attempted ? Math.round((correct / attempted) * 1000) / 10 : 0;
+    const minutes = (seconds || 0) / 60;
+    const wpm = minutes >= 0.05 ? Math.round(attempted / minutes) : null;          // pace through the text
+    const wcpm = minutes >= 0.05 ? Math.round(correct / minutes) : null;           // words correct per minute
+    return { attempted, correct, sub, skip, unreached, extra, accuracy, wpm, wcpm, tricky: Array.from(new Set(tricky)), totalWords: attempted + unreached };
+  }
+  function cleanWord(w) { return w.replace(/^[^A-Za-z0-9À-ÿ']+|[^A-Za-z0-9À-ÿ']+$/g, "").replace(/[’]/g, "'"); }
+
+  return { align, score, tokenize, transcriptWords, numberToWords, yearWords, key, canon, same, lev, cleanWord };
+})();
+if (typeof module !== "undefined") module.exports = Align;
+
+</script>
+<script id="app">
+/* ==== APP ==== */
+(function () {
+  "use strict";
+  const $ = (s, el = document) => el.querySelector(s);
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const TYPE_LABELS = { news: "Newspaper article", essay: "Short essay", letter: "Letter", review: "Review", excerpt: "Book excerpt", story: "Story", speech: "Speech", poem: "Poem" };
+  const KEY_ATTEMPTS = "readaloud.v1.attempts", KEY_SETTINGS = "readaloud.v1.settings";
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const hasTTS = "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
+  const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+
+  /* ---------- storage ---------- */
+  function load(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } }
+  function save(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { toast("Couldn't save (storage full or private browsing)."); return false; } }
+  const DEFAULT_SETTINGS = { fontSize: 24, dyslexia: false, theme: "light", lang: "en-GB", showListen: false, rate: 0.95 };
+  let settings = Object.assign({}, DEFAULT_SETTINGS, load(KEY_SETTINGS, {}));
+  const attempts = () => load(KEY_ATTEMPTS, []);
+  function saveAttempt(a) { const all = attempts(); const i = all.findIndex(x => x.id === a.id); if (i >= 0) all[i] = a; else all.push(a); save(KEY_ATTEMPTS, all); }
+  function applySettings() {
+    const root = document.documentElement;
+    root.dataset.theme = settings.theme; root.dataset.dyslexia = settings.dyslexia ? "1" : "0";
+    root.style.setProperty("--reading-size", settings.fontSize + "px");
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.content = settings.theme === "dark" ? "#14181c" : settings.theme === "sepia" ? "#f4ecd8" : "#f6f4ef";
+    save(KEY_SETTINGS, settings);
+  }
+
+  /* ---------- helpers ---------- */
+  const byId = id => TEXTS.find(t => t.id === id);
+  const wordCount = t => t.body.split(/\s+/).filter(w => /[A-Za-z0-9]/.test(w)).length;
+  const fmtTime = s => { s = Math.max(0, Math.round(s)); return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); };
+  const fmtDate = iso => new Date(iso).toLocaleString(undefined, { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  const levelDots = n => "●".repeat(n) + "○".repeat(5 - n);
+  let toastTimer;
+  function toast(msg) { let el = $("#toast"); if (!el) { el = document.createElement("div"); el.id = "toast"; el.className = "toast"; el.setAttribute("role", "status"); document.body.appendChild(el); } el.textContent = msg; el.classList.remove("hidden"); clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.add("hidden"), 3000); }
+
+  // Render body as paragraphs/lines of word spans. Token indexes match Align.tokenize(body).
+  function renderBody(body, cls) {
+    let idx = 0;
+    return body.split(/\n\s*\n/).map(par => "<p>" + par.split("\n").map(line =>
+      Align.tokenize(line).map(tok => cls(tok, idx++)).join(" ")).join("<br>") + "</p>").join("");
+  }
+
+  /* ---------- router ---------- */
+  const view = () => $("#view");
+  let cleanup = null;
+  function go(hash) { if (location.hash === hash) route(); else location.hash = hash; }
+  function route() {
+    if (cleanup) { try { cleanup(); } catch (e) {} cleanup = null; }
+    stopSpeaking();
+    const h = location.hash.replace(/^#\/?/, "").split("/");
+    document.querySelectorAll(".nav button").forEach(b => b.removeAttribute("aria-current"));
+    window.scrollTo(0, 0);
+    if (h[0] === "read" && byId(h[1])) return showRead(byId(h[1]));
+    if (h[0] === "results" && h[1]) return showResults(h[1]);
+    if (h[0] === "progress") { $("#nav-progress").setAttribute("aria-current", "page"); return showProgress(h[1]); }
+    if (h[0] === "settings") { $("#nav-settings").setAttribute("aria-current", "page"); return showSettings(); }
+    $("#nav-library").setAttribute("aria-current", "page");
+    showLibrary();
+  }
+
+  /* ---------- library ---------- */
+  const filt = { type: "all", level: "all" };
+  function showLibrary() {
+    document.title = "Read Aloud";
+    const types = Array.from(new Set(TEXTS.map(t => t.type)));
+    const best = {};
+    attempts().forEach(a => { best[a.textId] = Math.max(best[a.textId] || 0, a.accuracy); });
+    const list = TEXTS.filter(t => (filt.type === "all" || t.type === filt.type) && (filt.level === "all" || t.level === +filt.level));
+    view().innerHTML = `
+      <h1>Choose something to read</h1>
+      <p class="muted">Pick a text, read it aloud, and see how you did. Level 1 is the easiest, level 5 the hardest.</p>
+      <div class="filters">
+        <label>Type</label>
+        <div class="chips" id="f-type">${["all", ...types].map(t => `<button class="chip" data-v="${t}" aria-pressed="${filt.type === t}">${t === "all" ? "All" : esc(TYPE_LABELS[t] || t)}</button>`).join("")}</div>
+        <label>Level</label>
+        <div class="chips" id="f-level">${["all", 1, 2, 3, 4, 5].map(l => `<button class="chip" data-v="${l}" aria-pressed="${String(filt.level) === String(l)}">${l === "all" ? "All" : "Level " + l}</button>`).join("")}</div>
+      </div>
+      <div class="grid">${list.map(t => `
+        <button class="card" data-id="${t.id}">
+          <span class="badge">${esc(TYPE_LABELS[t.type] || t.type)}</span>
+          <h3>${esc(t.title)}</h3>
+          <div class="meta"><span class="level" title="Level ${t.level} of 5" aria-label="Level ${t.level} of 5">${levelDots(t.level)}</span><span>${wordCount(t)} words</span>
+          ${best[t.id] != null ? `<span class="best">Best ${Math.round(best[t.id])}%</span>` : ""}</div>
+        </button>`).join("") || `<p class="muted">No texts match those filters.</p>`}</div>`;
+    view().querySelectorAll("#f-type .chip").forEach(b => b.onclick = () => { filt.type = b.dataset.v; showLibrary(); });
+    view().querySelectorAll("#f-level .chip").forEach(b => b.onclick = () => { filt.level = b.dataset.v; showLibrary(); });
+    view().querySelectorAll(".card").forEach(c => c.onclick = () => go("#/read/" + c.dataset.id));
+  }
+
+  /* ---------- text-to-speech (Listen) ---------- */
+  let speaking = false;
+  function stopSpeaking() { if (hasTTS) { speaking = false; speechSynthesis.cancel(); } document.querySelectorAll(".w.speaking").forEach(e => e.classList.remove("speaking")); const b = $("#btn-listen"); if (b) b.textContent = "🔊 Listen"; }
+  function pickVoice() {
+    const vs = speechSynthesis.getVoices();
+    return vs.find(v => v.lang === settings.lang && /Natural|Enhanced|Premium|Google|Daniel|Serena|Kate|Arthur/i.test(v.name)) || vs.find(v => v.lang === settings.lang) || vs.find(v => v.lang && v.lang.startsWith("en")) || null;
+  }
+  function speakText(text) {
+    if (!hasTTS) return;
+    stopSpeaking(); speaking = true;
+    const u = new SpeechSynthesisUtterance(text);
+    const v = pickVoice(); if (v) u.voice = v; u.lang = settings.lang; u.rate = settings.rate;
+    speechSynthesis.speak(u);
+  }
+  // Read the reading-pane aloud paragraph by paragraph, highlighting words when the browser reports boundaries.
+  function listen(container, btn) {
+    if (!hasTTS) return toast("This browser can't read aloud.");
+    if (speaking) return stopSpeaking();
+    speaking = true; btn.textContent = "■ Stop listening";
+    const paras = Array.from(container.querySelectorAll("p"));
+    let p = 0;
+    const next = () => {
+      if (!speaking || p >= paras.length) return stopSpeaking();
+      const spans = Array.from(paras[p++].querySelectorAll(".w"));
+      let text = "", starts = [];
+      spans.forEach(s => { starts.push(text.length); text += s.textContent + " "; });
+      const u = new SpeechSynthesisUtterance(text);
+      const v = pickVoice(); if (v) u.voice = v; u.lang = settings.lang; u.rate = settings.rate;
+      u.onboundary = e => { if (e.name && e.name !== "word") return; let k = 0; while (k + 1 < starts.length && starts[k + 1] <= e.charIndex) k++; spans.forEach(s => s.classList.remove("speaking")); spans[k] && spans[k].classList.add("speaking"); };
+      u.onend = () => { spans.forEach(s => s.classList.remove("speaking")); next(); };
+      u.onerror = () => stopSpeaking();
+      speechSynthesis.speak(u);
+    };
+    next();
+  }
+
+  /* ---------- speech recognition controller ---------- */
+  function makeRecognizer(onUpdate, onFatal) {
+    let active = false, rec = null, committed = "", session = "", restarts = 0, fatal = false, endResolve = null;
+    function collapse(results) {
+      // iOS Safari sometimes repeats growing results; drop any result that the next one already contains at its start.
+      const arr = [];
+      for (let i = 0; i < results.length; i++) arr.push(String(results[i][0].transcript || "").trim());
+      const out = [];
+      arr.forEach((s, i) => { const n = arr[i + 1]; if (n && s && n.toLowerCase().startsWith(s.toLowerCase())) return; if (s) out.push(s); });
+      return out.join(" ");
+    }
+    function startSession() {
+      rec = new SR();
+      rec.lang = settings.lang; rec.continuous = true; rec.interimResults = true; rec.maxAlternatives = 1;
+      rec.onresult = e => { session = collapse(e.results); onUpdate(text()); };
+      rec.onerror = e => {
+        if (e.error === "not-allowed" || e.error === "service-not-allowed") { fatal = true; active = false; onFatal("permission"); }
+        else if (e.error === "audio-capture") { fatal = true; active = false; onFatal("nomic"); }
+        else if (e.error === "network") { onFatal("network"); }
+        else if (e.error === "language-not-supported") { fatal = true; active = false; onFatal("lang"); }
+        // "no-speech" and "aborted" are normal: we just restart in onend.
+      };
+      rec.onend = () => {
+        if (session) committed = (committed + " " + session).trim(); session = "";
+        if (active && !fatal && restarts < 200) { restarts++; setTimeout(() => { if (active) { try { startSession(); } catch (err) { active = false; onFatal("restart"); } } }, 150); }
+        else if (endResolve) { endResolve(); endResolve = null; }
+      };
+      rec.start();
+    }
+    function text() { return (committed + " " + session).trim(); }
+    return {
+      start() { active = true; fatal = false; committed = ""; session = ""; restarts = 0; startSession(); },
+      stop() {
+        active = false;
+        return new Promise(res => { if (!rec) return res(); endResolve = res; try { rec.stop(); } catch (e) { res(); } setTimeout(() => { if (endResolve) { if (session) { committed = (committed + " " + session).trim(); session = ""; } endResolve(); endResolve = null; } }, 1500); });
+      },
+      abort() { active = false; try { rec && rec.abort(); } catch (e) {} },
+      text, get active() { return active; }
+    };
+  }
+
+  /* ---------- reading screen ---------- */
+  function showRead(t) {
+    document.title = t.title + " · Read Aloud";
+    const secure = window.isSecureContext;
+    const srOK = !!SR && secure;
+    const extraNotes = [];
+    if (!SR) extraNotes.push(`<div class="notice"><b>Speech recognition isn't available in this browser</b> (for example Firefox). Use Safari on iPad/iPhone or Chrome/Edge on a laptop. You can still time yourself and type or paste what you read below.</div>`);
+    else if (!secure) extraNotes.push(`<div class="notice"><b>The microphone needs a secure (https://) page.</b> Open the app from its https link to use speech recognition. You can still use the typed option below.</div>`);
+    view().innerHTML = `
+      <button class="btn" id="back">← Library</button>
+      <h1>${esc(t.title)}</h1>
+      <div class="source"><span class="badge">${esc(TYPE_LABELS[t.type] || t.type)}</span> <span class="level">${levelDots(t.level)}</span> · ${wordCount(t)} words · ${esc(t.source)}</div>
+      ${extraNotes.join("")}
+      <div class="toolbar">
+        <button class="btn" id="font-dn" aria-label="Smaller text">A−</button>
+        <button class="btn" id="font-up" aria-label="Larger text">A+</button>
+        <button class="btn" id="dys" aria-pressed="${settings.dyslexia}">${settings.dyslexia ? "✓ " : ""}Easy-read font</button>
+        <button class="btn" id="theme">${settings.theme === "dark" ? "☀️ Light" : "🌙 Dark"}</button>
+        ${settings.showListen && hasTTS ? `<button class="btn" id="btn-listen">🔊 Listen</button>` : ""}
+      </div>
+      <div class="reading" id="reading">${renderBody(t.body, (tok, i) => `<span class="w" data-i="${i}">${esc(tok.display)}</span>`)}</div>
+      <div id="typed" class="${srOK ? "hidden" : ""}">
+        <h2>Type or paste what was read</h2>
+        <p class="muted small">Use the timer button below while reading, then type or paste a transcript here (for example from the device's own dictation) and press Check.</p>
+        <textarea id="typed-text" placeholder="Type or paste the transcript here…"></textarea>
+        <div class="row" style="margin-top:10px"><button class="btn primary" id="typed-check">Check my reading</button></div>
+      </div>
+      ${srOK ? `<p class="small"><button class="btn" id="show-typed" style="min-height:44px">Microphone not working? Type or paste instead</button></p>` : ""}
+      <h2>Coming soon</h2>
+      <div class="soon">
+        <div class="panel"><h3>✍️ Write a summary <span class="tag">Soon</span></h3><p class="muted small">Sum up the text in a few sentences.</p></div>
+        <div class="panel"><h3>📌 Key points <span class="tag">Soon</span></h3><p class="muted small">Note the most important ideas.</p></div>
+        <div class="panel"><h3>❓ Questions <span class="tag">Soon</span></h3><p class="muted small">${t.questions && t.questions.length ? t.questions.length + " comprehension questions are ready for this text." : "Comprehension questions about the text."}</p></div>
+      </div>
+      <div class="dock"><div class="inner">
+        <button class="btn primary big" id="rec">🎤 Start reading</button>
+        <span class="timer" id="timer">0:00</span>
+        <div class="live" id="live" aria-live="polite">${srOK ? "Tap Start, then read the text aloud at your own pace. Tap Stop when you finish." : "Tap Start to time your reading."}</div>
+      </div></div>`;
+    $("#back").onclick = () => go("#/library");
+    $("#font-dn").onclick = () => { settings.fontSize = Math.max(16, settings.fontSize - 2); applySettings(); };
+    $("#font-up").onclick = () => { settings.fontSize = Math.min(44, settings.fontSize + 2); applySettings(); };
+    $("#dys").onclick = e => { settings.dyslexia = !settings.dyslexia; applySettings(); e.currentTarget.textContent = (settings.dyslexia ? "✓ " : "") + "Easy-read font"; };
+    $("#theme").onclick = e => { settings.theme = settings.theme === "dark" ? "light" : "dark"; applySettings(); e.currentTarget.textContent = settings.theme === "dark" ? "☀️ Light" : "🌙 Dark"; };
+    if ($("#btn-listen")) $("#btn-listen").onclick = e => listen($("#reading"), e.currentTarget);
+    if ($("#show-typed")) $("#show-typed").onclick = () => { $("#typed").classList.remove("hidden"); $("#typed-text").focus(); };
+
+    let t0 = 0, elapsed = 0, tick = null, rec = null, wakeLock = null, running = false;
+    const recBtn = $("#rec"), live = $("#live"), timer = $("#timer");
+    const setTimer = () => { timer.textContent = fmtTime(running ? (Date.now() - t0) / 1000 : elapsed); };
+    async function begin() {
+      stopSpeaking();
+      running = true; t0 = Date.now(); elapsed = 0; tick = setInterval(setTimer, 250); setTimer();
+      recBtn.classList.add("recording"); recBtn.innerHTML = "■ Stop &amp; check";
+      try { if (navigator.wakeLock) wakeLock = await navigator.wakeLock.request("screen"); } catch (e) {}
+      if (srOK) {
+        live.innerHTML = `<span class="dot"></span> Listening… start reading.`;
+        rec = makeRecognizer(txt => { live.textContent = txt ? "…" + txt.slice(-160) : "Listening…"; }, reason => {
+          const msg = { permission: "Microphone permission was blocked. Allow the microphone for this site (on iPhone/iPad: Settings › Safari › Microphone, and Settings › Privacy › Speech Recognition), then try again. Or use the typed option.", nomic: "No microphone was found.", network: "Speech recognition needs an internet connection on this device. Check the connection.", lang: "This language isn't supported for recognition here. Try another in Settings.", restart: "Speech recognition stopped unexpectedly. Tap Stop and try again." }[reason];
+          if (reason === "permission" || reason === "nomic" || reason === "lang") { finish(false); $("#typed").classList.remove("hidden"); }
+          toast(msg); live.textContent = msg;
+        });
+        try { rec.start(); } catch (e) { toast("Couldn't start the microphone: " + e.message); finish(false); }
+      } else live.textContent = "Timing… read aloud, then tap Stop.";
+    }
+    async function finish(check = true) {
+      if (!running) return;
+      running = false; elapsed = (Date.now() - t0) / 1000; clearInterval(tick); setTimer();
+      recBtn.classList.remove("recording"); recBtn.innerHTML = "🎤 Start again";
+      try { wakeLock && wakeLock.release(); } catch (e) {} wakeLock = null;
+      if (rec) { live.textContent = "Finishing…"; recBtn.disabled = true; await rec.stop(); recBtn.disabled = false; }
+      const transcript = rec ? rec.text() : "";
+      rec = null;
+      if (!check) return;
+      if (srOK) {
+        if (!transcript.trim()) { live.textContent = "I didn't catch any words. Check the microphone, move a bit closer, and try again."; return; }
+        const a = createAttempt(t, transcript, elapsed, "speech");
+        go("#/results/" + a.id);
+      } else {
+        live.textContent = `Time: ${fmtTime(elapsed)}. Now type or paste what was read, then press Check.`;
+        $("#typed").classList.remove("hidden"); $("#typed-text").focus();
+      }
+    }
+    recBtn.onclick = () => running ? finish(true) : begin();
+    $("#typed-check").onclick = () => {
+      const txt = $("#typed-text").value.trim();
+      if (!txt) return toast("Type or paste the transcript first.");
+      const a = createAttempt(t, txt, elapsed || 0, "typed");
+      go("#/results/" + a.id);
+    };
+    cleanup = () => { clearInterval(tick); if (rec) rec.abort(); try { wakeLock && wakeLock.release(); } catch (e) {} };
+  }
+
+  function createAttempt(t, transcript, seconds, method) {
+    const r = Align.align(t.body, transcript);
+    const s = Align.score(r, [], seconds);
+    const a = { id: "a" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), textId: t.id, title: t.title, level: t.level, type: t.type, date: new Date().toISOString(), seconds: Math.round(seconds * 10) / 10, method, transcript, overrides: [] };
+    Object.assign(a, pickScore(s));
+    saveAttempt(a);
+    return a;
+  }
+  const pickScore = s => ({ accuracy: s.accuracy, wpm: s.wpm, wcpm: s.wcpm, attempted: s.attempted, correct: s.correct, substituted: s.sub, skipped: s.skip, extra: s.extra, notReached: s.unreached, tricky: s.tricky });
+
+  /* ---------- results ---------- */
+  function cheer(acc, reached) {
+    if (reached === 0) return "Let's give it another go.";
+    if (acc >= 97) return "Brilliant reading! 🌟";
+    if (acc >= 90) return "Great job, that was really fluent.";
+    if (acc >= 80) return "Good reading. A few words to practise.";
+    if (acc >= 65) return "Nice effort. This one has some tricky words, so practise them and try again.";
+    return "Good start. Tricky texts take practice, so have a look at the words below and try again.";
+  }
+  function showResults(id) {
+    const a = attempts().find(x => x.id === id);
+    if (!a) { view().innerHTML = `<p>That attempt wasn't found.</p><button class="btn" onclick="location.hash='#/library'">Library</button>`; return; }
+    const t = byId(a.textId);
+    if (!t) { view().innerHTML = `<p>The text for this attempt is no longer in the library.</p>`; return; }
+    document.title = "Results · " + t.title;
+    const r = Align.align(t.body, a.transcript);
+    const ov = new Set(a.overrides || []);
+    const draw = () => {
+      const s = Align.score(r, Array.from(ov), a.seconds);
+      Object.assign(a, pickScore(s)); a.overrides = Array.from(ov); saveAttempt(a);
+      const prev = attempts().filter(x => x.textId === t.id && x.id !== a.id && x.date < a.date);
+      const last = prev[prev.length - 1];
+      const delta = last ? Math.round(s.accuracy - last.accuracy) : null;
+      view().innerHTML = `
+        <button class="btn" id="back">← Library</button>
+        <h1>${esc(t.title)}</h1>
+        <div class="cheer">${cheer(s.accuracy, s.attempted)}</div>
+        <p class="muted">${s.unreached ? `You read ${s.attempted} of ${s.totalWords} words. ` : ""}${delta != null ? (delta > 0 ? `That's ${delta}% better than last time! ` : delta === 0 ? "Same score as last time. " : "") : ""}${a.method === "typed" ? "(Checked from a typed transcript.)" : ""}</p>
+        <div class="stats">
+          <div class="stat"><div class="v">${s.accuracy}%</div><div class="l">Accuracy</div></div>
+          <div class="stat"><div class="v">${s.wpm ?? "–"}</div><div class="l">Words per minute</div></div>
+          <div class="stat"><div class="v">${s.correct}/${s.attempted}</div><div class="l">Words read correctly</div></div>
+          <div class="stat"><div class="v">${s.sub}</div><div class="l">Different word heard</div></div>
+          <div class="stat"><div class="v">${s.skip}</div><div class="l">Words missed</div></div>
+          <div class="stat"><div class="v">${s.extra}</div><div class="l">Extra words</div></div>
+          <div class="stat"><div class="v">${fmtTime(a.seconds)}</div><div class="l">Time</div></div>
+        </div>
+        <div class="notice info small"><b>Remember:</b> the speech recogniser makes mistakes too, especially with names, old-fashioned words and accents, so a highlighted word may not be your mistake. <b>Tap a highlighted word</b> to mark it as a recogniser error and the score will update.</div>
+        <div class="legend">
+          <span><i class="sw" style="background:var(--panel);border:1px solid var(--line)"></i>Read correctly</span>
+          <span><i class="sw" style="background:var(--sub-soft);border-bottom:3px solid var(--sub)"></i>Heard a different word (shown small)</span>
+          <span><i class="sw" style="background:var(--skip-soft)"></i>Missed</span>
+          <span><i class="sw" style="background:var(--extra-soft)"></i>+ Extra word said</span>
+          <span><i class="sw" style="background:var(--rec-soft)"></i>Recogniser error</span>
+          ${s.unreached ? `<span><i class="sw" style="background:var(--unreached)"></i>Not reached</span>` : ""}
+        </div>
+        <div class="reading" id="result-text">${renderBody(t.body, (tok, i) => {
+          const x = r.tokens[i]; if (!x) return esc(tok.display);
+          const extras = x.before.map(w => `<span class="extra" title="Extra word">+${esc(w)}</span>`).join("");
+          let cls = "r-correct", said = "", tip = "";
+          if (x.status === "sub" || x.status === "skip") {
+            if (ov.has(i)) { cls = "r-rec"; tip = "Marked as recogniser error. Tap to undo."; }
+            else if (x.status === "sub") { cls = "r-sub"; said = `<span class="said">${esc(x.said)}</span>`; tip = `Heard “${x.said}”. Tap if this was the recogniser's mistake.`; }
+            else { cls = "r-skip"; tip = "Not heard. Tap if this was the recogniser's mistake."; }
+          } else if (x.status === "unreached") cls = "r-unreached";
+          const flag = (x.status === "sub" || x.status === "skip");
+          return extras + `<span class="w ${cls}" data-i="${i}" ${flag ? `role="button" tabindex="0" title="${esc(tip)}" aria-label="${esc(tok.display + ". " + tip)}"` : ""}>${esc(tok.display)}</span>${said}`;
+        })}${r.trailingExtra.length ? ` ${r.trailingExtra.map(w => `<span class="extra">+${esc(w)}</span>`).join("")}` : ""}</div>
+        <h2>Words to practise</h2>
+        ${s.tricky.length ? `<p class="muted small">${hasTTS ? "Tap a word to hear it." : ""}</p><div class="words">${s.tricky.map(w => `<button class="word" data-w="${esc(w)}">${esc(w)}</button>`).join("")}</div>` : `<div class="notice good">No words to practise. Well done!</div>`}
+        <details><summary>What the microphone heard</summary><p class="muted">${esc(a.transcript)}</p></details>
+        <div class="row" style="margin-top:16px">
+          <button class="btn primary big" id="again">↻ Try again</button>
+          <button class="btn big" id="lib">Choose another text</button>
+          <button class="btn big" id="prog">See progress</button>
+        </div>`;
+      $("#back").onclick = () => go("#/library");
+      $("#again").onclick = () => go("#/read/" + t.id);
+      $("#lib").onclick = () => go("#/library");
+      $("#prog").onclick = () => go("#/progress/" + t.id);
+      view().querySelectorAll(".word").forEach(b => b.onclick = () => speakText(b.dataset.w));
+      view().querySelectorAll("#result-text .w[role=button]").forEach(el => {
+        const toggle = () => { const i = +el.dataset.i; ov.has(i) ? ov.delete(i) : ov.add(i); const y = window.scrollY; draw(); window.scrollTo(0, y); };
+        el.onclick = toggle; el.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); } };
+      });
+    };
+    draw();
+  }
+
+  /* ---------- progress ---------- */
+  function chart(list) {
+    if (list.length < 2) return `<p class="muted small">The chart appears after two or more attempts.</p>`;
+    const W = 640, H = 220, P = 34, pts = list.slice(-30);
+    const maxW = Math.max(60, ...pts.map(a => a.wpm || 0)) * 1.1;
+    const x = i => P + (i * (W - 2 * P)) / (pts.length - 1);
+    const yA = v => H - P - (v / 100) * (H - 2 * P), yW = v => H - P - (v / maxW) * (H - 2 * P);
+    const line = (f, key) => pts.map((a, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${f(a[key] || 0).toFixed(1)}`).join(" ");
+    return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Accuracy and words per minute over the last ${pts.length} attempts">
+      ${[0, 25, 50, 75, 100].map(v => `<line x1="${P}" x2="${W - P}" y1="${yA(v)}" y2="${yA(v)}" stroke="var(--line)"/><text x="4" y="${yA(v) + 4}" font-size="11" fill="var(--muted)">${v}%</text>`).join("")}
+      <path d="${line(yA, "accuracy")}" fill="none" stroke="var(--ok)" stroke-width="3"/>
+      <path d="${line(yW, "wpm")}" fill="none" stroke="var(--accent)" stroke-width="3" stroke-dasharray="6 5"/>
+      ${pts.map((a, i) => `<circle cx="${x(i)}" cy="${yA(a.accuracy)}" r="4" fill="var(--ok)"/>`).join("")}
+      <text x="${W - P}" y="14" font-size="12" text-anchor="end" fill="var(--ok)">— accuracy %</text>
+      <text x="${W - P}" y="30" font-size="12" text-anchor="end" fill="var(--accent)">- - words per minute (max ${Math.round(maxW)})</text>
+    </svg>`;
+  }
+  function showProgress(textId) {
+    document.title = "Progress · Read Aloud";
+    const all = attempts().sort((a, b) => a.date < b.date ? -1 : 1);
+    const list = textId ? all.filter(a => a.textId === textId) : all;
+    const avg = k => list.length ? Math.round(list.reduce((s, a) => s + (a[k] || 0), 0) / list.filter(a => a[k] != null).length || 0) : "–";
+    const trickyCount = {};
+    list.forEach(a => (a.tricky || []).forEach(w => { const k = w.toLowerCase(); trickyCount[k] = (trickyCount[k] || 0) + 1; }));
+    const tricky = Object.entries(trickyCount).sort((a, b) => b[1] - a[1]).slice(0, 30);
+    const perText = {};
+    all.forEach(a => { const p = perText[a.textId] || (perText[a.textId] = { n: 0, best: 0, last: null, title: a.title }); p.n++; p.best = Math.max(p.best, a.accuracy); p.last = a; });
+    view().innerHTML = `
+      <h1>Progress</h1>
+      <div class="row"><label for="pt" class="muted small">Show</label>
+        <select id="pt"><option value="">All texts</option>${TEXTS.filter(t => perText[t.id]).map(t => `<option value="${t.id}" ${t.id === textId ? "selected" : ""}>${esc(t.title)}</option>`).join("")}</select></div>
+      ${!list.length ? `<div class="notice info">No readings saved yet. Choose a text from the library and read it aloud. Each attempt is saved on this device only.</div>` : `
+      <div class="stats">
+        <div class="stat"><div class="v">${list.length}</div><div class="l">Readings</div></div>
+        <div class="stat"><div class="v">${avg("accuracy")}%</div><div class="l">Average accuracy</div></div>
+        <div class="stat"><div class="v">${avg("wpm")}</div><div class="l">Average words/min</div></div>
+        <div class="stat"><div class="v">${Math.round(list.reduce((s, a) => s + (a.seconds || 0), 0) / 60)}</div><div class="l">Minutes reading</div></div>
+      </div>
+      <div class="panel">${chart(list)}</div>
+      ${tricky.length ? `<h2>Tricky words</h2><div class="words">${tricky.map(([w, n]) => `<button class="word" data-w="${esc(w)}">${esc(w)}<span class="n">×${n}</span></button>`).join("")}</div>` : ""}
+      ${!textId ? `<h2>By text</h2><div class="table-wrap"><table><tr><th>Text</th><th>Attempts</th><th>Best</th><th>Last</th></tr>
+        ${Object.entries(perText).map(([id, p]) => `<tr><td><a href="#/progress/${id}">${esc(p.title)}</a></td><td>${p.n}</td><td>${Math.round(p.best)}%</td><td>${Math.round(p.last.accuracy)}% · ${p.last.wpm ?? "–"} wpm</td></tr>`).join("")}</table></div>` : ""}
+      <h2>All attempts</h2>
+      <div class="table-wrap"><table><tr><th>Date</th><th>Text</th><th>Accuracy</th><th>WPM</th><th>Time</th><th></th></tr>
+        ${list.slice().reverse().map(a => `<tr><td>${fmtDate(a.date)}</td><td>${esc(a.title)}</td><td>${a.accuracy}%</td><td>${a.wpm ?? "–"}</td><td>${fmtTime(a.seconds)}</td><td><a href="#/results/${a.id}">View</a></td></tr>`).join("")}</table></div>`}
+      <h2>For parents</h2>
+      <p class="muted small">Everything is stored only in this browser on this device. Export a copy to keep a record or move to another device.</p>
+      <div class="row">
+        <button class="btn" id="exp-json">⬇ Export JSON</button>
+        <button class="btn" id="exp-csv">⬇ Export CSV</button>
+        <label class="btn" for="imp" style="cursor:pointer">⬆ Import JSON</label><input type="file" id="imp" accept="application/json,.json" class="hidden">
+        <button class="btn danger" id="clear">Delete all history</button>
+      </div>`;
+    $("#pt").onchange = e => go("#/progress" + (e.target.value ? "/" + e.target.value : ""));
+    view().querySelectorAll(".word").forEach(b => b.onclick = () => speakText(b.dataset.w));
+    $("#exp-json").onclick = () => download("reading-progress-" + new Date().toISOString().slice(0, 10) + ".json", JSON.stringify({ app: "Read Aloud", version: 1, exported: new Date().toISOString(), attempts: attempts() }, null, 2), "application/json");
+    $("#exp-csv").onclick = () => download("reading-progress-" + new Date().toISOString().slice(0, 10) + ".csv", toCSV(attempts()), "text/csv");
+    $("#imp").onchange = e => { const f = e.target.files[0]; if (!f) return; f.text().then(txt => { try { const d = JSON.parse(txt); const inc = Array.isArray(d) ? d : d.attempts; const cur = attempts(); const ids = new Set(cur.map(a => a.id)); const add = inc.filter(a => a && a.id && a.textId && !ids.has(a.id)); save(KEY_ATTEMPTS, cur.concat(add)); toast(`Imported ${add.length} attempts.`); showProgress(textId); } catch (err) { toast("That file couldn't be read."); } }); };
+    $("#clear").onclick = () => { if (confirm("Delete all saved reading history on this device? Export first if you want to keep it.")) { save(KEY_ATTEMPTS, []); showProgress(); } };
+  }
+  function toCSV(list) {
+    const cols = ["date", "textId", "title", "type", "level", "method", "seconds", "accuracy", "wpm", "wcpm", "attempted", "correct", "substituted", "skipped", "extra", "notReached", "tricky", "transcript"];
+    const q = v => { v = Array.isArray(v) ? v.join("; ") : v == null ? "" : String(v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+    return "\ufeff" + cols.join(",") + "\n" + list.map(a => cols.map(c => q(a[c])).join(",")).join("\n");
+  }
+  function download(name, content, type) {
+    const blob = new Blob([content], { type });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  }
+
+  /* ---------- settings ---------- */
+  function showSettings() {
+    document.title = "Settings · Read Aloud";
+    const seg = (name, opts) => `<div class="seg" data-k="${name}">${opts.map(([v, l]) => `<button data-v="${v}" aria-pressed="${String(settings[name]) === String(v)}">${l}</button>`).join("")}</div>`;
+    const sw = name => `<button class="switch" role="switch" data-k="${name}" aria-checked="${!!settings[name]}"><span class="hidden">toggle</span></button>`;
+    view().innerHTML = `
+      <h1>Settings</h1>
+      <div class="panel">
+        <div class="setting"><div><b>Text size</b><div class="muted small">Currently ${settings.fontSize}px</div></div><div class="row"><button class="btn" id="fs-dn">A−</button><button class="btn" id="fs-up">A+</button></div></div>
+        <div class="setting"><div><b>Easy-read (dyslexia-friendly) font</b><div class="muted small">Plainer letters and wider spacing.</div></div>${sw("dyslexia")}</div>
+        <div class="setting"><div><b>Colours</b></div>${seg("theme", [["light", "Light"], ["sepia", "Cream"], ["dark", "Dark"]])}</div>
+        <div class="setting"><div><b>Accent for speech recognition</b><div class="muted small">Pick the closest match to how you speak.</div></div>
+          <select id="lang">${[["en-GB", "English (UK)"], ["en-IE", "English (Ireland)"], ["en-US", "English (US)"], ["en-AU", "English (Australia)"], ["en-CA", "English (Canada)"], ["en-IN", "English (India)"]].map(([v, l]) => `<option value="${v}" ${settings.lang === v ? "selected" : ""}>${l}</option>`).join("")}</select></div>
+        <div class="setting"><div><b>Show "Listen" button</b><div class="muted small">Hear the text read aloud as an example of fluent reading.${hasTTS ? "" : " (Not available in this browser.)"}</div></div>${sw("showListen")}</div>
+        <div class="setting"><div><b>Listening speed</b></div>${seg("rate", [[0.8, "Slow"], [0.95, "Normal"], [1.1, "Fast"]])}</div>
+      </div>
+      <h2>About</h2>
+      <div class="panel small">
+        <p><b>Privacy:</b> reading history and settings are stored only in this browser on this device. Nothing is sent to us, as there is no server and no account.</p>
+        <p><b>But note:</b> speech recognition is provided by the browser. On iPhone/iPad (Safari) and in Chrome or Edge, the audio of the reading may be sent to Apple, Google or Microsoft to turn it into text. Read-aloud voices are provided by the device.</p>
+        <p class="muted">Speech recognition: ${SR ? (window.isSecureContext ? "available" : "needs an https:// page") : "not available in this browser"} · Read aloud: ${hasTTS ? "available" : "not available"}</p>
+      </div>`;
+    view().querySelectorAll(".switch").forEach(b => b.onclick = () => { const k = b.dataset.k; settings[k] = !settings[k]; b.setAttribute("aria-checked", settings[k]); applySettings(); });
+    view().querySelectorAll(".seg").forEach(s => s.querySelectorAll("button").forEach(b => b.onclick = () => { const k = s.dataset.k; settings[k] = k === "rate" ? +b.dataset.v : b.dataset.v; s.querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x === b)); applySettings(); }));
+    $("#lang").onchange = e => { settings.lang = e.target.value; applySettings(); };
+    $("#fs-dn").onclick = () => { settings.fontSize = Math.max(16, settings.fontSize - 2); applySettings(); showSettings(); };
+    $("#fs-up").onclick = () => { settings.fontSize = Math.min(44, settings.fontSize + 2); applySettings(); showSettings(); };
+  }
+
+  /* ---------- boot ---------- */
+  applySettings();
+  $("#nav-library").onclick = () => go("#/library");
+  $("#nav-progress").onclick = () => go("#/progress");
+  $("#nav-settings").onclick = () => go("#/settings");
+  $("#brand").onclick = () => go("#/library");
+  window.addEventListener("hashchange", route);
+  route();
+  if (hasTTS) speechSynthesis.getVoices();
+  if ("serviceWorker" in navigator && /^https?:$/.test(location.protocol) && location.hostname !== "localhost" && location.hostname !== "127.0.0.1") {
+    navigator.serviceWorker.register("sw.js").catch(() => {});
+  }
+  // Test hook (used by automated screenshots): ReadingApp.mockAttempt(textId, transcript, seconds)
+  window.ReadingApp = { mockAttempt(textId, transcript, seconds) { const a = createAttempt(byId(textId), transcript, seconds, "speech"); go("#/results/" + a.id); return a.id; }, TEXTS, Align };
+})();
+
+</script>
+</body>
+</html>
